@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id       String  @id @default(uuid())
+  email    String  @unique
+  password String
+  name     String
+  avatar   String?
+
+  // Gamification
+  xp    Int @default(0)
+  level Int @default(1)
+
+  // Preferences
+  timezone  String @default("UTC")
+  weekStart Int    @default(0) // 0 = Sunday, 1 = Monday
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  habits    Habit[]
+  tasks     Task[]
+  events    CalendarEvent[]
+  sessions  Session[]
+  settings  UserSettings?
+  auditLogs AuditLog[]
+
+  @@index([email])
+}
+
+model Session {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  refreshToken String  @unique
+  userAgent    String?
+  ipAddress    String?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model UserSettings {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  notificationsEnabled Boolean @default(true)
+  emailReminders       Boolean @default(false)
+  darkMode             Boolean @default(false)
+  reminderTime         String? // HH:mm format
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================
+// CATEGORIES
+// ============================================
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  color     String   @default("#6366F1")
+  icon      String?
+  createdAt DateTime @default(now())
+
+  habits Habit[]
+  tasks  Task[]
+}
+
+// ============================================
+// HABITS
+// ============================================
+
+model Habit {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  title       String
+  description String?
+  notes       String?
+  color       String  @default("#4F46E5")
+  icon        String?
+
+  // Scheduling
+  frequency     String  @default("daily") // daily, weekly, custom
+  frequencyDays String? // For custom: "1,3,5" (Mon, Wed, Fri)
+  timeOfDay     String? // morning, afternoon, evening, anytime
+  estimatedMins Int? // Estimated duration in minutes
+
+  // Goals
+  goal Int     @default(1)
+  unit String?
+
+  // Status
+  priority String @default("medium") // low, medium, high
+  status   String @default("active") // active, paused, archived
+
+  // Streaks (denormalized for performance)
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  lastCompletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs HabitLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+model HabitLog {
+  id      String @id @default(uuid())
+  habitId String
+  habit   Habit  @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  date      DateTime // Normalized to start of day (UTC)
+  value     Int      @default(1)
+  completed Boolean  @default(false)
+  notes     String?
+  xpEarned  Int      @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([habitId, date])
+  @@index([habitId])
+  @@index([date])
+  @@index([habitId, date])
+}
+
+// ============================================
+// TASKS (One-off, not recurring)
+// ============================================
+
+model Task {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  title       String
+  description String?
+  notes       String?
+
+  priority String @default("medium") // low, medium, high
+  status   String @default("pending") // pending, completed, cancelled
+
+  dueDate       DateTime?
+  dueTime       String? // HH:mm format
+  estimatedMins Int?
+
+  completedAt DateTime?
+  xpEarned    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([userId, status])
+}
+
+// ============================================
+// CALENDAR EVENTS
+// ============================================
+
+model CalendarEvent {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  color       String  @default("#8B5CF6")
+
+  startDate DateTime
+  endDate   DateTime?
+  allDay    Boolean   @default(false)
+
+  // Optional linking to habits/tasks
+  linkedType String? // habit, task
+  linkedId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([startDate])
+  @@index([userId, startDate])
+}
+
+// ============================================
+// AUDIT LOG (for security & debugging)
+// ============================================
+
+model AuditLog {
+  id     String  @id @default(uuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action    String // login, logout, habit_complete, xp_gain, etc.
+  entity    String? // habit, task, user, etc.
+  entityId  String?
+  metadata  String? // JSON string for additional context
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}

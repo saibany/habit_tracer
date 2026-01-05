@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================
+   THEME VARIABLES
+   ========================================== */
+:root {
+  --background: 248 250 252;
+  --foreground: 15 23 42;
+  --card: 255 255 255;
+  --card-foreground: 15 23 42;
+  --primary: 20 184 166;
+  --primary-foreground: 255 255 255;
+  --secondary: 99 102 241;
+  --muted: 241 245 249;
+  --muted-foreground: 100 116 139;
+  --accent: 139 92 246;
+  --border: 226 232 240;
+  --ring: 99 102 241;
+}
+
+.dark {
+  --background: 15 23 42;
+  --foreground: 248 250 252;
+  --card: 30 41 59;
+  --card-foreground: 248 250 252;
+  --primary: 45 212 191;
+  --primary-foreground: 15 23 42;
+  --secondary: 129 140 248;
+  --muted: 51 65 85;
+  --muted-foreground: 148 163 184;
+  --accent: 167 139 250;
+  --border: 51 65 85;
+  --ring: 129 140 248;
+}
+
+/* ==========================================
+   BASE STYLES
+   ========================================== */
+body {
+  @apply bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans antialiased;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ==========================================
+   CUSTOM SCROLLBAR
+   ========================================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100 dark:bg-slate-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-500;
+}
+
+/* ==========================================
+   ANIMATIONS
+   ========================================== */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+
+  50% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+
+  100% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+}
+
+@keyframes confetti {
+  0% {
+    transform: translateY(0) rotate(0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(-100px) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(90deg,
+      rgb(var(--muted)) 0%,
+      rgb(var(--card)) 50%,
+      rgb(var(--muted)) 100%);
+  background-size: 200% 100%;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+
+/* ==========================================
+   UTILITY CLASSES
+   ========================================== */
+.glass {
+  @apply bg-white/80 dark:bg-slate-800/80 backdrop-blur-lg;
+}
+
+.gradient-primary {
+  @apply bg-gradient-to-r from-teal-500 to-indigo-600;
+}
+
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-teal-500 to-indigo-600;
+}
+
+/* Card Hover Effect */
+.card-hover {
+  @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+}
+
+/* ==========================================
+   TOAST NOTIFICATIONS
+   ========================================== */
+.toast-container {
+  @apply fixed bottom-4 right-4 z-50 space-y-2;
+}
+
+.toast {
+  @apply p-4 rounded-xl shadow-lg animate-fade-in flex items-center gap-3;
+}
+
+.toast-success {
+  @apply bg-teal-500 text-white;
+}
+
+.toast-error {
+  @apply bg-red-500 text-white;
+}
+
+.toast-info {
+  @apply bg-indigo-500 text-white;
+}
