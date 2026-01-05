@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import dotenv from 'dotenv';
+import path from 'path';
 
 // Load environment variables first
 dotenv.config();
@@ -50,6 +51,15 @@ app.use('/api/v1/tasks', taskRoutes);
 app.use('/api/v1/calendar', calendarRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/settings', settingsRoutes);
+
+// Serve static files from client
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, '../../client/dist')));
+
+    app.get('*', (_req, res) => {
+        res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
+    });
+}
 
 // Health Check
 app.get('/health', async (_req, res) => {
