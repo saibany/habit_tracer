@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { getRequiredEnv } from '../utils/env';
 
 export interface AuthRequest extends Request {
     user?: { userId: string };
@@ -13,10 +14,12 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+        const JWT_SECRET = getRequiredEnv('JWT_SECRET');
+        const decoded = jwt.verify(token, JWT_SECRET);
         req.user = decoded as { userId: string };
         next();
     } catch (err) {
-        return res.status(403).json({ error: 'Invalid token' });
+        // Don't leak information about why token is invalid
+        return res.status(403).json({ error: 'Invalid or expired token' });
     }
 };

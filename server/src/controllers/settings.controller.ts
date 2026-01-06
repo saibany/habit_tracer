@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createAuditLog } from '../lib/auditLog';
+import { getClientIp } from '../middleware/security';
 
 const settingsSchema = z.object({
     timezone: z.string().max(50).optional(),
@@ -119,7 +120,7 @@ export const exportData = async (req: AuthRequest, res: Response) => {
         await createAuditLog({
             userId: req.user.userId,
             action: 'data_export',
-            ipAddress: req.ip
+            ipAddress: getClientIp(req)
         });
 
         // Remove sensitive data
@@ -188,7 +189,7 @@ export const deleteAccount = async (req: AuthRequest, res: Response) => {
         await createAuditLog({
             userId: req.user.userId,
             action: 'account_delete',
-            ipAddress: req.ip
+            ipAddress: getClientIp(req)
         });
 
         // Cascade delete handles all related data

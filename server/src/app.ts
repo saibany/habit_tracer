@@ -2,12 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import { rateLimit } from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 
 // Load environment variables first
 dotenv.config();
+
+// Validate environment variables
+import { validateEnv } from './utils/env';
+validateEnv();
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -19,30 +22,69 @@ import settingsRoutes from './routes/settings.routes';
 
 // Utils
 import { checkDatabaseConnection } from './utils/db';
+import { getEnv, getRequiredEnv } from './utils/env';
+
+// Security middleware
+import { requestId, getClientIp } from './middleware/security';
+import { apiLimiter } from './middleware/rateLimit';
+import { verifyOrigin, verifyRequestedWith } from './middleware/csrf';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(getEnv('PORT'), 10);
 
-// Security Middleware
+// Trust proxy for accurate IP addresses (important for rate limiting)
+if (getEnv('TRUST_PROXY') === 'true') {
+    app.set('trust proxy', 1);
+}
+
+// Security Headers with Helmet
+const isProduction = getEnv('NODE_ENV') === 'production';
 app.use(helmet({
-    contentSecurityPolicy: false // Allow inline scripts for dev
+    contentSecurityPolicy: isProduction ? {
+        directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+        },
+    } : false, // Disable in dev for easier development
+    crossOriginEmbedderPolicy: false, // Allow embedding if needed
+    hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+    }
 }));
+
+// CORS Configuration
+const clientUrl = getEnv('CLIENT_URL');
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    credentials: true
+    origin: clientUrl.split(','), // Support multiple origins
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+    exposedHeaders: ['X-Request-ID']
 }));
-app.use(express.json({ limit: '1mb' }));
+
+// Body parsing with size limits
+app.use(express.json({ limit: '1mb', strict: true }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// Rate Limiting (in-memory for development)
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // Increased to 1000 to prevent false positives during active usage
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Too many requests, please try again later.' }
-});
-app.use('/api', limiter);
+// Request ID for tracing
+app.use(requestId);
+
+// CSRF Protection
+app.use(verifyOrigin);
+app.use(verifyRequestedWith);
+
+// Rate Limiting
+app.use('/api', apiLimiter);
 
 // Routes
 app.use('/api/v1/auth', authRoutes);
@@ -72,9 +114,18 @@ app.get('/health', async (_req, res) => {
 });
 
 // Global Error Handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error("Unhandled Error:", err);
-    res.status(500).json({ error: 'Internal Server Error' });
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const requestId = (req as any).id || 'unknown';
+    console.error(`[${requestId}] Unhandled Error:`, err);
+    
+    // Don't leak error details in production
+    const isDevelopment = getEnv('NODE_ENV') !== 'production';
+    
+    res.status(500).json({
+        error: 'Internal Server Error',
+        ...(isDevelopment && { message: err.message, stack: err.stack }),
+        requestId
+    });
 });
 
 if (require.main === module) {

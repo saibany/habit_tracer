@@ -3,11 +3,12 @@ import { z } from 'zod';
 import prisma from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createAuditLog } from '../lib/auditLog';
+import { sanitizeInput } from '../middleware/security';
 
 const taskSchema = z.object({
-    title: z.string().min(1).max(200),
-    description: z.string().max(1000).optional(),
-    notes: z.string().max(2000).optional(),
+    title: z.string().min(1).max(200).transform(val => sanitizeInput(val)),
+    description: z.string().max(1000).transform(val => sanitizeInput(val)).optional(),
+    notes: z.string().max(2000).transform(val => sanitizeInput(val)).optional(),
     priority: z.enum(['low', 'medium', 'high']).default('medium'),
     status: z.enum(['pending', 'completed', 'cancelled']).default('pending'),
     dueDate: z.string().optional(),

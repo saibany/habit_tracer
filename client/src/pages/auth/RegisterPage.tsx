@@ -25,8 +25,13 @@ export const RegisterPage = () => {
         e.preventDefault();
         setError('');
 
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters');
+        // Client-side validation (server will also validate)
+        if (password.length < 8) {
+            setError('Password must be at least 8 characters');
+            return;
+        }
+        if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+            setError('Password must contain at least one uppercase letter, one lowercase letter, and one number');
             return;
         }
 
@@ -44,7 +49,9 @@ export const RegisterPage = () => {
                 navigate('/login', { state: { message: 'Account created! Please log in.' } });
             }, 2000);
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Registration failed. Please try again.');
+            // Show detailed error message from server
+            const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Registration failed. Please try again.';
+            setError(errorMessage);
         } finally {
             setIsLoading(false);
         }
@@ -122,11 +129,11 @@ export const RegisterPage = () => {
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
-                                        minLength={6}
+                                        minLength={8}
                                         className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-800 outline-none transition-all text-slate-900 dark:text-white"
-                                        placeholder="At least 6 characters"
+                                        placeholder="At least 8 characters"
                                     />
-                                    <p className="text-xs text-slate-400 mt-1">Must be at least 6 characters</p>
+                                    <p className="text-xs text-slate-400 mt-1">Must be at least 8 characters with uppercase, lowercase, and number</p>
                                 </div>
 
                                 <button

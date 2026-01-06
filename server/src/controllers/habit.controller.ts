@@ -4,19 +4,20 @@ import { startOfDay, subDays, isSameDay, differenceInCalendarDays } from 'date-f
 import prisma from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createAuditLog } from '../lib/auditLog';
+import { sanitizeInput } from '../middleware/security';
 
 const habitSchema = z.object({
-    title: z.string().min(1).max(200),
-    description: z.string().max(1000).optional(),
-    notes: z.string().max(2000).optional(),
+    title: z.string().min(1).max(200).transform(val => sanitizeInput(val)),
+    description: z.string().max(1000).transform(val => sanitizeInput(val)).optional(),
+    notes: z.string().max(2000).transform(val => sanitizeInput(val)).optional(),
     color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-    icon: z.string().max(10).optional(),
+    icon: z.string().max(10).transform(val => sanitizeInput(val)).optional(),
     frequency: z.enum(['daily', 'weekly', 'custom']).default('daily'),
-    frequencyDays: z.string().max(20).optional(),
+    frequencyDays: z.string().max(20).transform(val => sanitizeInput(val)).optional(),
     timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'anytime']).optional(),
     estimatedMins: z.number().min(1).max(480).optional(),
     goal: z.number().min(1).max(100).default(1),
-    unit: z.string().max(50).optional(),
+    unit: z.string().max(50).transform(val => sanitizeInput(val)).optional(),
     priority: z.enum(['low', 'medium', 'high']).default('medium'),
     status: z.enum(['active', 'paused', 'archived']).default('active'),
     categoryId: z.string().uuid().optional(),
@@ -190,6 +191,9 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { id } = req.params;
     const { date, value = 1, notes } = req.body;
+    
+    // Sanitize notes if provided
+    const sanitizedNotes = notes ? sanitizeInput(notes) : undefined;
 
     if (!date) return res.status(400).json({ error: "Date is required" });
 
@@ -230,8 +234,8 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
             // 4. Upsert log
             const log = await tx.habitLog.upsert({
                 where: { habitId_date: { habitId: id, date: dateObj } },
-                update: { value, completed: true, notes, xpEarned },
-                create: { habitId: id, date: dateObj, value, completed: true, notes, xpEarned }
+                update: { value, completed: true, notes: sanitizedNotes, xpEarned },
+                create: { habitId: id, date: dateObj, value, completed: true, notes: sanitizedNotes, xpEarned }
             });
 
             // 5. Calculate new streak

@@ -4,8 +4,11 @@ const api = axios.create({
     baseURL: '/api/v1',
     withCredentials: true, // Send cookies with requests
     headers: {
-        'Content-Type': 'application/json'
-    }
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest' // CSRF protection indicator
+    },
+    timeout: 30000, // 30 second timeout
+    validateStatus: (status) => status < 500 // Don't throw on 4xx errors
 });
 
 // Add response interceptor for error handling

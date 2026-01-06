@@ -39,7 +39,9 @@ export const LoginPage = () => {
             await login(email, password);
             navigate('/');
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Login failed. Please try again.');
+            // Show detailed error message from server
+            const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Login failed. Please check your credentials and try again.';
+            setError(errorMessage);
         } finally {
             setIsLoading(false);
         }
