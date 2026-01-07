@@ -4,6 +4,7 @@ import { startOfDay, subDays, isSameDay, differenceInCalendarDays } from 'date-f
 import prisma from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createAuditLog } from '../lib/auditLog';
+import { evaluateAndAwardBadges, updateChallengeProgress, buildEvaluationContext, awardXp, calculateLevelFromXp } from '../lib/gamificationService';
 import { sanitizeInput } from '../middleware/security';
 
 const habitSchema = z.object({
@@ -187,11 +188,14 @@ export const deleteHabit = async (req: AuthRequest, res: Response) => {
 // ============================================
 // LOG HABIT COMPLETION (TRANSACTIONAL)
 // ============================================
+// ============================================
+// LOG HABIT COMPLETION (TRANSACTIONAL)
+// ============================================
 export const logHabit = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { id } = req.params;
     const { date, value = 1, notes } = req.body;
-    
+
     // Sanitize notes if provided
     const sanitizedNotes = notes ? sanitizeInput(notes) : undefined;
 
@@ -201,7 +205,8 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
     const userId = req.user.userId;
 
     try {
-        // Execute entire operation in a transaction for atomicity
+        // Execute entire operation in a SINGLE ATOMIC TRANSACTION
+        // If any part (XP, Badges, Challenges) fails, the Habit Log is rolled back.
         const result = await prisma.$transaction(async (tx) => {
             // 1. Get habit with recent logs
             const habit = await tx.habit.findUnique({
@@ -223,26 +228,29 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
                     log: existingLog,
                     streak: { current: habit.currentStreak, longest: habit.longestStreak },
                     xpEarned: 0,
+                    newTotalXp: (await tx.user.findUnique({ where: { id: userId } }))?.xp || 0,
                     message: 'Already completed today',
-                    alreadyLogged: true
+                    alreadyLogged: true,
+                    newBadges: [],
+                    levelUp: undefined
                 };
             }
 
             // 3. Calculate XP (base 10 + streak bonus, capped)
-            const xpEarned = Math.min(10 + habit.currentStreak * 2, 50);
+            const xpBase = Math.min(10 + habit.currentStreak * 2, 50);
 
             // 4. Upsert log
             const log = await tx.habitLog.upsert({
                 where: { habitId_date: { habitId: id, date: dateObj } },
-                update: { value, completed: true, notes: sanitizedNotes, xpEarned },
-                create: { habitId: id, date: dateObj, value, completed: true, notes: sanitizedNotes, xpEarned }
+                update: { value, completed: true, notes: sanitizedNotes, xpEarned: xpBase },
+                create: { habitId: id, date: dateObj, value, completed: true, notes: sanitizedNotes, xpEarned: xpBase }
             });
 
             // 5. Calculate new streak
             const allLogs = [log, ...habit.logs.filter(l => !isSameDay(l.date, dateObj))];
             const { currentStreak, longestStreak } = calculateStreak(allLogs, dateObj);
 
-            // 6. Update habit
+            // 6. Update habit streak
             await tx.habit.update({
                 where: { id },
                 data: {
@@ -252,30 +260,31 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
                 }
             });
 
-            // 7. Update user XP
-            const user = await tx.user.update({
-                where: { id: userId },
-                data: { xp: { increment: xpEarned } }
-            });
+            // 7. Award XP (Atomic - passing tx)
+            const xpResult = await awardXp(userId, xpBase, 'habit_complete', id, dateObj, tx);
 
-            // 8. Check for level up
-            const newLevel = Math.floor(user.xp / 100) + 1;
-            if (newLevel > user.level) {
-                await tx.user.update({
-                    where: { id: userId },
-                    data: { level: newLevel }
-                });
-            }
+            // 8. Update Challenge Progress (Atomic - passing tx)
+            await updateChallengeProgress(userId, dateObj, currentStreak, xpBase, tx);
+
+            // 9. Evaluate & Award Badges (Atomic - passing tx)
+            // We need to build context using the TRANSACTION client to see the latest updates
+            const ctx = await buildEvaluationContext(userId, tx);
+            const newBadges = await evaluateAndAwardBadges(ctx, tx);
 
             return {
                 log,
                 streak: { current: currentStreak, longest: longestStreak },
-                xpEarned,
-                newLevel: newLevel > user.level ? newLevel : undefined
+                xpEarned: xpBase,
+                newTotalXp: xpResult.newXp,
+                levelUp: xpResult.levelUp,
+                newBadges,
+                userId,
+                habitId: id,
+                alreadyLogged: false
             };
         });
 
-        // Audit log (outside transaction - non-critical)
+        // Audit log (outside transaction - non-critical side effect which doesn't affect data integrity)
         if (!result.alreadyLogged) {
             await createAuditLog({
                 userId,
@@ -286,7 +295,15 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
             });
         }
 
-        res.json(result);
+        res.json({
+            log: result.log,
+            streak: result.streak,
+            xpEarned: result.xpEarned,
+            newLevel: result.levelUp?.newLevel,
+            levelUp: result.levelUp,
+            newBadges: result.newBadges,
+            newTotalXp: result.newTotalXp
+        });
     } catch (e: unknown) {
         console.error('[Habits] Error logging habit:', e);
         if (e instanceof Error && e.message === "Habit not found") {

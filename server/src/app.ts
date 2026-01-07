@@ -19,6 +19,9 @@ import taskRoutes from './routes/task.routes';
 import calendarRoutes from './routes/calendar.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import settingsRoutes from './routes/settings.routes';
+import challengeRoutes from './routes/challenge.routes';
+import badgeRoutes from './routes/badge.routes';
+import xpRoutes from './routes/xp.routes';
 
 // Utils
 import { checkDatabaseConnection } from './utils/db';
@@ -93,6 +96,9 @@ app.use('/api/v1/tasks', taskRoutes);
 app.use('/api/v1/calendar', calendarRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/settings', settingsRoutes);
+app.use('/api/v1/challenges', challengeRoutes);
+app.use('/api/v1/badges', badgeRoutes);
+app.use('/api/v1/xp', xpRoutes);
 
 // Serve static files from client
 if (process.env.NODE_ENV === 'production') {
@@ -117,10 +123,10 @@ app.get('/health', async (_req, res) => {
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
     const requestId = (req as any).id || 'unknown';
     console.error(`[${requestId}] Unhandled Error:`, err);
-    
+
     // Don't leak error details in production
     const isDevelopment = getEnv('NODE_ENV') !== 'production';
-    
+
     res.status(500).json({
         error: 'Internal Server Error',
         ...(isDevelopment && { message: err.message, stack: err.stack }),
@@ -136,6 +142,16 @@ if (require.main === module) {
         if (!dbConnected) {
             console.error('❌ Could not connect to database. Check your DATABASE_URL in .env');
             process.exit(1);
+        }
+
+        // Sync gamification data (badges, challenges) at startup
+        try {
+            const { syncBadgeDefinitions, syncDefaultChallenges } = await import('./lib/gamificationService');
+            await syncBadgeDefinitions();
+            await syncDefaultChallenges();
+            console.log('✅ Gamification data synced');
+        } catch (e) {
+            console.warn('⚠️ Gamification sync failed:', e);
         }
 
         app.listen(PORT, () => {

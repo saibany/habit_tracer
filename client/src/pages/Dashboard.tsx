@@ -2,10 +2,12 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfDay, getDay } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Loader2, Flame, Target, TrendingUp, Calendar } from 'lucide-react';
+import { Plus, Loader2, Flame, Target, TrendingUp, Calendar, Zap } from 'lucide-react';
 import { useHabits, useLogHabit, useUndoHabitLog, useAnalyticsSummary, useHeatmap, Habit } from '../lib/queries';
+import { useXpBreakdown } from '../lib/gamificationQueries';
 import { useAuth } from '../context/AuthContext';
 import { CreateHabitModal } from '../components/habits/CreateHabitModal';
+import { XpDetailsModal, BadgeUnlockAnimation } from '../components/gamification';
 import { Heatmap } from '../components/analytics/Heatmap';
 import { cn } from '../lib/utils';
 
@@ -13,10 +15,13 @@ export const Dashboard = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isXpModalOpen, setIsXpModalOpen] = useState(false);
+    const [unlockedBadge, setUnlockedBadge] = useState<any | null>(null);
 
     const { data: habits, isLoading: habitsLoading } = useHabits('active');
     const { data: summary } = useAnalyticsSummary();
     const { data: heatmapData } = useHeatmap();
+    const { data: xpData } = useXpBreakdown();
     const logHabit = useLogHabit();
     const undoLog = useUndoHabitLog();
 
@@ -42,7 +47,13 @@ export const Dashboard = () => {
         if (isCompleted) {
             undoLog.mutate({ id: habitId, date: today });
         } else {
-            logHabit.mutate({ id: habitId, date: today });
+            logHabit.mutate({ id: habitId, date: today }, {
+                onSuccess: (data: any) => {
+                    if (data.newBadges && data.newBadges.length > 0) {
+                        setUnlockedBadge(data.newBadges[0]);
+                    }
+                }
+            });
         }
     };
 
@@ -68,6 +79,20 @@ export const Dashboard = () => {
                 )}
             </AnimatePresence>
 
+            {/* XP Details Modal */}
+            <XpDetailsModal
+                isOpen={isXpModalOpen}
+                onClose={() => setIsXpModalOpen(false)}
+            />
+
+            {/* Badge Unlock Animation */}
+            {unlockedBadge && (
+                <BadgeUnlockAnimation
+                    badge={unlockedBadge}
+                    onClose={() => setUnlockedBadge(null)}
+                />
+            )}
+
             {/* Header */}
             <motion.header
                 initial={{ opacity: 0, y: -20 }}
@@ -75,22 +100,25 @@ export const Dashboard = () => {
                 className="flex flex-col md:flex-row md:items-end justify-between gap-6"
             >
                 <div>
-                    <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white tracking-tight">
-                        {greeting}, {user?.name?.split(' ')[0] || 'there'}
+                    <h2 className="text-3xl md:text-5xl font-bold text-slate-900 dark:text-white tracking-tight mb-2">
+                        {greeting}, <span className="text-gradient-cosmic">{user?.name?.split(' ')[0] || 'there'}</span>
                     </h2>
-                    <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">
+                    <p className="text-slate-500 dark:text-slate-400 text-lg flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
                         {format(new Date(), 'EEEE, MMMM d')}
                     </p>
 
                     {totalTodaysHabits > 0 && (
-                        <div className="flex items-center gap-4 mt-4">
-                            <div className="h-3 w-48 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div className="flex items-center gap-4 mt-6">
+                            <div className="h-4 w-48 bg-slate-100 dark:bg-slate-800/50 rounded-full overflow-hidden border border-slate-200 dark:border-white/5">
                                 <motion.div
-                                    className="h-full bg-gradient-to-r from-teal-400 to-indigo-500 rounded-full"
+                                    className="h-full bg-gradient-to-r from-teal-400 to-indigo-500 rounded-full relative overflow-hidden"
                                     initial={{ width: 0 }}
                                     animate={{ width: `${progress}%` }}
                                     transition={{ duration: 1, ease: "circOut" }}
-                                />
+                                >
+                                    <div className="absolute inset-0 animate-shimmer opacity-30" />
+                                </motion.div>
                             </div>
                             <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
                                 {completedToday}/{totalTodaysHabits} complete
@@ -101,9 +129,9 @@ export const Dashboard = () => {
 
                 <button
                     onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white px-5 py-3 rounded-xl font-medium transition-all shadow-lg hover:shadow-xl active:scale-95"
+                    className="flex items-center gap-2 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-white px-6 py-3.5 rounded-xl font-medium transition-all shadow-lg hover:shadow-teal-500/25 active:scale-95 group"
                 >
-                    <Plus className="w-5 h-5" />
+                    <Plus className="w-5 h-5 transition-transform group-hover:rotate-90" />
                     <span>New Habit</span>
                 </button>
             </motion.header>
@@ -116,9 +144,9 @@ export const Dashboard = () => {
                     transition={{ delay: 0.1 }}
                     className="grid grid-cols-2 md:grid-cols-4 gap-4"
                 >
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                    <div className="glass-card p-5 rounded-2xl">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-orange-100 dark:bg-orange-900/30 rounded-xl">
+                            <div className="p-2.5 bg-orange-100 dark:bg-orange-500/10 rounded-xl">
                                 <Flame className="w-5 h-5 text-orange-500" />
                             </div>
                             <div>
@@ -127,9 +155,9 @@ export const Dashboard = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                    <div className="glass-card p-5 rounded-2xl">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-teal-100 dark:bg-teal-900/30 rounded-xl">
+                            <div className="p-2.5 bg-teal-100 dark:bg-teal-500/10 rounded-xl">
                                 <TrendingUp className="w-5 h-5 text-teal-500" />
                             </div>
                             <div>
@@ -138,9 +166,9 @@ export const Dashboard = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                    <div className="glass-card p-5 rounded-2xl">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl">
+                            <div className="p-2.5 bg-indigo-100 dark:bg-indigo-500/10 rounded-xl">
                                 <Target className="w-5 h-5 text-indigo-500" />
                             </div>
                             <div>
@@ -149,9 +177,9 @@ export const Dashboard = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                    <div className="glass-card p-5 rounded-2xl">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
+                            <div className="p-2.5 bg-purple-100 dark:bg-purple-500/10 rounded-xl">
                                 <Calendar className="w-5 h-5 text-purple-500" />
                             </div>
                             <div>
@@ -160,6 +188,40 @@ export const Dashboard = () => {
                             </div>
                         </div>
                     </div>
+
+                    {/* XP / Level Card - Clickable */}
+                    <button
+                        onClick={() => setIsXpModalOpen(true)}
+                        className="bg-gradient-to-br from-indigo-600 to-purple-700 dark:from-indigo-900/80 dark:to-purple-900/80 p-6 rounded-2xl shadow-lg hover:shadow-indigo-500/20 transition-all hover:-translate-y-1 active:scale-95 text-left col-span-2 md:col-span-4 relative overflow-hidden group border border-white/10"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                        <div className="flex items-center gap-4 relative z-10">
+                            <div className="p-3 bg-white/10 backdrop-blur-sm rounded-xl border border-white/10">
+                                <Zap className="w-6 h-6 text-yellow-300 fill-yellow-300" />
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex items-end justify-between mb-2">
+                                    <div className="flex items-baseline gap-3">
+                                        <p className="text-3xl font-bold text-white">Level {xpData?.level || 1}</p>
+                                        <p className="text-sm text-indigo-200 font-medium">Rank Title</p>
+                                    </div>
+                                    <p className="text-sm text-indigo-200 font-medium">{xpData?.totalXp?.toLocaleString() || 0} XP</p>
+                                </div>
+                                <div className="h-2.5 bg-black/20 rounded-full overflow-hidden backdrop-blur-sm">
+                                    <motion.div
+                                        className="h-full bg-gradient-to-r from-yellow-300 to-amber-500 rounded-full shadow-[0_0_10px_rgba(252,211,77,0.5)]"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${xpData?.levelProgress?.progressPercent || 0}%` }}
+                                        transition={{ duration: 1 }}
+                                    />
+                                </div>
+                                <div className="flex justify-between mt-2">
+                                    <p className="text-xs text-indigo-200">Current Progress</p>
+                                    <p className="text-xs text-indigo-200">{Math.round(xpData?.levelProgress?.progressPercent || 0)}% to next level</p>
+                                </div>
+                            </div>
+                        </div>
+                    </button>
                 </motion.div>
             )}
 
@@ -168,10 +230,15 @@ export const Dashboard = () => {
                 {/* Habits Column */}
                 <div className="lg:col-span-2 space-y-4">
                     <div className="flex items-center justify-between px-1">
-                        <h3 className="text-xl font-semibold text-slate-800 dark:text-white">Today's Habits</h3>
+                        <h3 className="text-xl font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                            Today's Habits
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-xs font-medium text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/5">
+                                {todaysHabits.length}
+                            </span>
+                        </h3>
                         {habits && habits.length > todaysHabits.length && (
                             <span className="text-sm text-slate-500 dark:text-slate-400">
-                                {habits.length - todaysHabits.length} more not scheduled today
+                                {habits.length - todaysHabits.length} more not scheduled
                             </span>
                         )}
                     </div>
@@ -184,24 +251,24 @@ export const Dashboard = () => {
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="bg-white dark:bg-slate-800 p-8 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-center"
+                            className="glass-panel p-8 rounded-2xl border-dashed border-2 border-slate-200/50 dark:border-slate-700/50 text-center"
                         >
-                            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100 dark:border-slate-700">
                                 <Calendar className="w-8 h-8 text-slate-400" />
                             </div>
                             <p className="text-slate-600 dark:text-slate-300 font-medium mb-2">
                                 {habits?.length === 0 ? "No habits yet" : "No habits scheduled for today"}
                             </p>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">
+                            <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
                                 {habits?.length === 0
                                     ? "Create your first habit to get started!"
                                     : "Enjoy your day off, or add a new habit!"}
                             </p>
                             <button
                                 onClick={() => setIsModalOpen(true)}
-                                className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+                                className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline flex items-center justify-center gap-1 w-full"
                             >
-                                + Add a new habit
+                                <Plus className="w-4 h-4" /> Add a new habit
                             </button>
                         </motion.div>
                     ) : (
@@ -222,8 +289,10 @@ export const Dashboard = () => {
                                         transition={{ delay: index * 0.05 }}
                                         onClick={() => navigate(`/habits/${habit.id}`)}
                                         className={cn(
-                                            "bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5",
-                                            isCompletedToday && "bg-teal-50/50 dark:bg-teal-900/10 border-teal-100 dark:border-teal-800/50"
+                                            "p-4 rounded-2xl cursor-pointer transition-all duration-300",
+                                            isCompletedToday
+                                                ? "bg-slate-50/80 dark:bg-slate-900/40 border border-slate-200/50 dark:border-white/5 opacity-70"
+                                                : "glass-card border border-white/20 dark:border-white/5 hover:-translate-y-1 hover:shadow-lg"
                                         )}
                                     >
                                         <div className="flex items-center gap-4">
@@ -231,17 +300,17 @@ export const Dashboard = () => {
                                             <button
                                                 onClick={(e) => handleToggleHabit(e, habit.id, isCompletedToday)}
                                                 className={cn(
-                                                    "w-10 h-10 rounded-xl border-2 flex items-center justify-center transition-all shrink-0",
+                                                    "w-12 h-12 rounded-xl flex items-center justify-center transition-all shrink-0 shadow-sm",
                                                     isCompletedToday
-                                                        ? "border-teal-500 bg-teal-500 text-white"
-                                                        : "border-slate-200 dark:border-slate-600 hover:border-teal-400"
+                                                        ? "bg-teal-500 text-white shadow-teal-500/20 scale-95"
+                                                        : "bg-slate-100 dark:bg-white/5 text-slate-300 dark:text-slate-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 hover:text-teal-500 hover:scale-105"
                                                 )}
                                             >
                                                 {isCompletedToday && (
                                                     <motion.svg
                                                         initial={{ scale: 0 }}
                                                         animate={{ scale: 1 }}
-                                                        className="w-5 h-5"
+                                                        className="w-6 h-6"
                                                         fill="none"
                                                         viewBox="0 0 24 24"
                                                         stroke="currentColor"
@@ -251,30 +320,26 @@ export const Dashboard = () => {
                                                 )}
                                             </button>
 
-                                            {/* Color indicator */}
-                                            <div
-                                                className="w-2 h-10 rounded-full shrink-0"
-                                                style={{ backgroundColor: habit.color }}
-                                            />
-
-                                            {/* Content */}
+                                            {/* Color and Info */}
                                             <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <div
+                                                        className="w-1.5 h-1.5 rounded-full"
+                                                        style={{ backgroundColor: habit.color }}
+                                                    />
+                                                    <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{habit.category?.name || 'General'}</span>
+                                                </div>
                                                 <h4 className={cn(
-                                                    "font-semibold text-slate-900 dark:text-white truncate",
-                                                    isCompletedToday && "line-through text-slate-500 dark:text-slate-400"
+                                                    "font-bold text-lg text-slate-900 dark:text-white truncate transition-colors",
+                                                    isCompletedToday && "line-through text-slate-500 dark:text-slate-500"
                                                 )}>
                                                     {habit.title}
                                                 </h4>
-                                                {habit.description && (
-                                                    <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
-                                                        {habit.description}
-                                                    </p>
-                                                )}
                                             </div>
 
                                             {/* Streak Badge */}
                                             {habit.currentStreak > 0 && (
-                                                <div className="flex items-center gap-1 px-3 py-1.5 bg-orange-100 dark:bg-orange-900/30 rounded-full shrink-0">
+                                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 dark:bg-orange-500/10 rounded-lg border border-orange-100 dark:border-orange-500/20 shrink-0">
                                                     <Flame className="w-4 h-4 text-orange-500" />
                                                     <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
                                                         {habit.currentStreak}
@@ -295,39 +360,15 @@ export const Dashboard = () => {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
-                        className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm"
+                        className="glass-panel p-6 rounded-2xl"
                     >
-                        <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4">Activity</h3>
+                        <h3 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-indigo-500" /> Activity
+                        </h3>
                         <Heatmap data={heatmapData || []} />
                     </motion.section>
-
-                    {/* Level Progress */}
-                    {user && (
-                        <motion.section
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.3 }}
-                            className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl p-6 text-white shadow-lg"
-                        >
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold">Level {user.level}</h3>
-                                <span className="text-sm opacity-80">{user.xp} XP</span>
-                            </div>
-                            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-                                <motion.div
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${(user.xp % 100)}%` }}
-                                    transition={{ duration: 1, delay: 0.5 }}
-                                    className="h-full bg-white rounded-full"
-                                />
-                            </div>
-                            <p className="text-sm mt-2 opacity-80">
-                                {100 - (user.xp % 100)} XP to level {user.level + 1}
-                            </p>
-                        </motion.section>
-                    )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };

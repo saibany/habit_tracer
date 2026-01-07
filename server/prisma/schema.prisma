@@ -36,6 +36,8 @@ model User {
   sessions  Session[]
   settings  UserSettings?
   auditLogs AuditLog[]
+  userBadges UserBadge[]
+  challengeParticipants ChallengeParticipant[]
 
   @@index([email])
 }
@@ -232,5 +234,120 @@ model AuditLog {
 
   @@index([userId])
   @@index([action])
+  @@index([createdAt])
+}
+
+// ============================================
+// BADGES & ACHIEVEMENTS
+// ============================================
+
+model Badge {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  category    String   // streak, consistency, volume, discipline, special, seasonal
+  tier        String   @default("bronze") // bronze, silver, gold, platinum
+  rarity      String   @default("common") // common, rare, epic, legendary
+  threshold   Int
+  xpReward    Int      @default(25)
+  icon        String
+  color       String   @default("#6366F1")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  userBadges UserBadge[]
+
+  @@index([category])
+  @@index([tier])
+  @@index([isActive, sortOrder])
+}
+
+model UserBadge {
+  id         String    @id @default(uuid())
+  userId     String
+  badgeId    String
+  state      String    @default("locked") // locked, in_progress, earned
+  progress   Int       @default(0)
+  earnedAt   DateTime?
+  notifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@index([userId, state])
+  @@index([badgeId])
+  @@index([earnedAt])
+}
+
+// ============================================
+// CHALLENGES
+// ============================================
+
+model Challenge {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  type        String    @default("global") // personal, global, group
+  targetType  String    // daily_completions, streak_days, xp_gain, perfect_week
+  targetValue Int
+  status      String    @default("upcoming") // upcoming, active, completed, expired
+  difficulty  String    @default("medium") // easy, medium, hard, extreme
+  xpReward    Int       @default(50)
+  badgeReward String?   // Badge ID awarded on completion
+  startDate   DateTime
+  endDate     DateTime?
+  createdBy   String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  participants ChallengeParticipant[]
+
+  @@index([status])
+  @@index([type])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([isActive, status])
+}
+
+model ChallengeParticipant {
+  id           String    @id @default(uuid())
+  challengeId  String
+  userId       String
+  state        String    @default("active") // active, completed, withdrawn
+  progress     Int       @default(0)
+  rank         Int?
+  joinedAt     DateTime  @default(now())
+  completedAt  DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@index([userId])
+  @@index([userId, state])
+  @@index([challengeId, progress])
+}
+
+// ============================================
+// XP TRANSACTIONS (Idempotency)
+// ============================================
+
+model XpTransaction {
+  id            String   @id @default(uuid())
+  userId        String
+  amount        Int
+  source        String   // habit_complete, challenge_complete, badge_unlock, streak_bonus, perfect_week
+  sourceId      String?  // ID of habit/challenge/badge if applicable
+  idempotencyKey String  @unique // userId:source:sourceId:date for deduplication
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, source])
   @@index([createdAt])
 }

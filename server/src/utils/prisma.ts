@@ -11,7 +11,15 @@ const prisma = new PrismaClient({
 // through the DATABASE_URL connection string parameters:
 // Example: postgresql://user:password@host:port/database?connection_limit=10&pool_timeout=20
 
-// Graceful shutdown
+// Graceful shutdown for containers/Railway (handles SIGTERM/SIGINT)
+const shutdown = async (signal: string) => {
+    console.log(`\n[Prisma] Received ${signal}, disconnecting...`);
+    await prisma.$disconnect();
+    process.exit(0);
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('beforeExit', async () => {
     await prisma.$disconnect();
 });

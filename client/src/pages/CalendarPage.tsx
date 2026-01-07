@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday } from 'date-fns';
-import { ChevronLeft, ChevronRight, Plus, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useCalendarEvents, useHabits, useCreateEvent } from '../lib/queries';
 import { motion } from 'framer-motion';
+import { cn } from '../lib/utils';
 
 export const CalendarPage = () => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -66,11 +67,11 @@ export const CalendarPage = () => {
                     <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
                 </div>
             ) : (
-                <div className="bg-white rounded-2xl border border-slate-100 p-6">
+                <div className="glass-panel p-6 rounded-2xl">
                     {/* Day Headers */}
                     <div className="grid grid-cols-7 gap-2 mb-2">
                         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                            <div key={day} className="text-center text-sm font-medium text-slate-500 py-2">
+                            <div key={day} className="text-center text-sm font-medium text-slate-500 dark:text-slate-400 py-2">
                                 {day}
                             </div>
                         ))}
@@ -88,6 +89,7 @@ export const CalendarPage = () => {
                             const dayEvents = getEventsForDay(day);
                             const completedHabits = getHabitLogsForDay(day);
                             const hasActivity = dayEvents.length > 0 || completedHabits.length > 0;
+                            const isTodayDate = isToday(day);
 
                             return (
                                 <motion.button
@@ -96,21 +98,26 @@ export const CalendarPage = () => {
                                     animate={{ opacity: 1 }}
                                     transition={{ delay: i * 0.01 }}
                                     onClick={() => handleDayClick(day)}
-                                    className={`aspect-square p-2 rounded-xl border transition-all hover:border-indigo-300 hover:bg-indigo-50/50 ${isToday(day)
-                                            ? 'bg-indigo-50 border-indigo-200'
-                                            : 'border-slate-100'
-                                        }`}
+                                    className={cn(
+                                        "aspect-square p-2 rounded-xl border transition-all relative overflow-hidden group",
+                                        isTodayDate
+                                            ? "bg-indigo-50 dark:bg-indigo-500/20 border-indigo-200 dark:border-indigo-500/50"
+                                            : "border-slate-100 dark:border-white/5 hover:border-indigo-300 dark:hover:border-indigo-500/30 hover:bg-slate-50 dark:hover:bg-white/5"
+                                    )}
                                 >
-                                    <div className={`text-sm font-medium ${isToday(day) ? 'text-indigo-600' : 'text-slate-700'}`}>
+                                    <div className={cn(
+                                        "text-sm font-medium relative z-10",
+                                        isTodayDate ? "text-indigo-600 dark:text-indigo-400" : "text-slate-700 dark:text-slate-300"
+                                    )}>
                                         {format(day, 'd')}
                                     </div>
 
                                     {hasActivity && (
-                                        <div className="mt-1 flex flex-wrap gap-0.5">
+                                        <div className="mt-1 flex flex-wrap gap-0.5 relative z-10">
                                             {completedHabits.slice(0, 3).map(h => (
                                                 <div
                                                     key={h.id}
-                                                    className="w-2 h-2 rounded-full"
+                                                    className="w-1.5 h-1.5 rounded-full"
                                                     style={{ backgroundColor: h.color }}
                                                     title={h.title}
                                                 />
@@ -118,11 +125,14 @@ export const CalendarPage = () => {
                                             {dayEvents.slice(0, 2).map(e => (
                                                 <div
                                                     key={e.id}
-                                                    className="w-2 h-2 rounded-full"
+                                                    className="w-1.5 h-1.5 rounded-full ring-1 ring-white/20"
                                                     style={{ backgroundColor: e.color }}
                                                     title={e.title}
                                                 />
                                             ))}
+                                            {(completedHabits.length + dayEvents.length) > 5 && (
+                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+                                            )}
                                         </div>
                                     )}
                                 </motion.button>
@@ -133,12 +143,15 @@ export const CalendarPage = () => {
             )}
 
             {/* Legend */}
-            <div className="flex flex-wrap gap-4 justify-center text-sm text-slate-500">
+            <div className="flex flex-wrap gap-4 justify-center text-sm text-slate-500 dark:text-slate-400">
                 <span className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-teal-500" /> Completed Habits
+                    <div className="w-3 h-3 rounded-full bg-teal-500 shadow-sm" /> Completed Habits
                 </span>
                 <span className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-purple-500" /> Events
+                    <div className="w-3 h-3 rounded-full bg-purple-500 shadow-sm" /> Events
+                </span>
+                <span className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-md bg-indigo-50 dark:bg-indigo-500/20 border border-indigo-200 dark:border-indigo-500/50" /> Today
                 </span>
             </div>
 

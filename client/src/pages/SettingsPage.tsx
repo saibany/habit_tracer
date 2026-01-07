@@ -10,7 +10,7 @@ import { cn } from '../lib/utils';
 export const SettingsPage = () => {
     const navigate = useNavigate();
     const { user, logout } = useAuth();
-    const { theme, setTheme, isDark } = useTheme();
+    const { theme, setTheme } = useTheme();
     const { data: settings, isLoading } = useSettings();
     const updateSettings = useUpdateSettings();
     const exportData = useExportData();

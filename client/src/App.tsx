@@ -7,9 +7,12 @@ import { HabitDetailPage } from './pages/HabitDetailPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ChallengesPage } from './pages/ChallengesPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { Loader2 } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { isAuthenticated, isLoading } = useAuth();
@@ -34,26 +37,30 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 function App() {
     return (
-        <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+        <>
+            <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
 
-            <Route path="/*" element={
-                <ProtectedRoute>
-                    <AppShell>
-                        <Routes>
-                            <Route path="/" element={<Dashboard />} />
-                            <Route path="/habits" element={<AllHabitsPage />} />
-                            <Route path="/habits/:id" element={<HabitDetailPage />} />
-                            <Route path="/analytics" element={<AnalyticsPage />} />
-                            <Route path="/calendar" element={<CalendarPage />} />
-                            <Route path="/settings" element={<SettingsPage />} />
-                        </Routes>
-                    </AppShell>
-                </ProtectedRoute>
-            } />
-        </Routes>
-    );
+                <Route path="/*" element={
+                    <ProtectedRoute>
+                        <AppShell>
+                            <Routes>
+                                <Route path="/" element={<Dashboard />} />
+                                <Route path="/habits" element={<AllHabitsPage />} />
+                                <Route path="/habits/:id" element={<HabitDetailPage />} />
+                                <Route path="/analytics" element={<AnalyticsPage />} />
+                                <Route path="/challenges" element={<ChallengesPage />} />
+                                <Route path="/profile" element={<ProfilePage />} />
+                                <Route path="/calendar" element={<CalendarPage />} />
+                                <Route path="/settings" element={<SettingsPage />} />
+                            </Routes>
+                        </AppShell>
+                    </ProtectedRoute>
+                } />
+            </Routes>
+            <Toaster />
+        </>);
 }
 
 export default App;

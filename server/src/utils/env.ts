@@ -11,7 +11,7 @@ const requiredEnvVars = [
 const optionalEnvVars = {
     NODE_ENV: 'development',
     PORT: '5000',
-    CLIENT_URL: 'http://localhost:5173',
+    CLIENT_URL: 'http://localhost:5173,http://localhost:5000,http://127.0.0.1:5173',
     JWT_EXPIRES_IN: '1h',
     REFRESH_TOKEN_EXPIRES_IN: '7d',
     TRUST_PROXY: 'false',

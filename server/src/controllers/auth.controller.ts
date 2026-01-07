@@ -77,16 +77,16 @@ export const register = async (req: Request, res: Response) => {
             const passwordErrors = e.errors.filter(err => err.path.includes('password'));
             if (passwordErrors.length > 0) {
                 const messages = passwordErrors.map(err => err.message);
-                return res.status(400).json({ 
+                return res.status(400).json({
                     error: 'Password validation failed',
                     message: messages.join('. '),
                     details: e.errors
                 });
             }
-            return res.status(400).json({ 
-                error: 'Validation failed', 
+            return res.status(400).json({
+                error: 'Validation failed',
                 message: e.errors.map(err => `${err.path.join('.')}: ${err.message}`).join('. '),
-                details: e.errors 
+                details: e.errors
             });
         }
         console.error('[Auth] Registration error details:', e);
@@ -99,7 +99,7 @@ export const register = async (req: Request, res: Response) => {
 // ============================================
 export const login = async (req: Request, res: Response) => {
     const ipAddress = getClientIp(req);
-    
+
     try {
         const { email, password } = loginSchema.parse(req.body);
 
@@ -149,7 +149,7 @@ export const login = async (req: Request, res: Response) => {
     } catch (e: unknown) {
         console.error('[Auth] Login error:', e);
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Invalid input',
                 message: e.errors.map(err => `${err.path.join('.')}: ${err.message}`).join('. ')
             });
@@ -275,6 +275,23 @@ async function createTokens(userId: string, req: Request) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
 
+    // Limit sessions per user (max 5) - cleanup oldest if exceeded
+    const MAX_SESSIONS_PER_USER = 5;
+    const existingCount = await prisma.session.count({ where: { userId } });
+    if (existingCount >= MAX_SESSIONS_PER_USER) {
+        const oldestSessions = await prisma.session.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'asc' },
+            take: existingCount - MAX_SESSIONS_PER_USER + 1,
+            select: { id: true }
+        });
+        if (oldestSessions.length > 0) {
+            await prisma.session.deleteMany({
+                where: { id: { in: oldestSessions.map(s => s.id) } }
+            });
+        }
+    }
+
     // Create session
     const session = await prisma.session.create({
         data: {
@@ -291,7 +308,7 @@ async function createTokens(userId: string, req: Request) {
 
 function setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
     const isProduction = getEnv('NODE_ENV') === 'production';
-    
+
     res.cookie('token', accessToken, {
         httpOnly: true,
         secure: isProduction, // Only send over HTTPS in production
