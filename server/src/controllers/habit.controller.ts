@@ -207,6 +207,7 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
     try {
         // Execute entire operation in a SINGLE ATOMIC TRANSACTION
         // If any part (XP, Badges, Challenges) fails, the Habit Log is rolled back.
+        // Increased timeout to 30s because gamification operations can be slow (badge sync, XP, etc.)
         const result = await prisma.$transaction(async (tx) => {
             // 1. Get habit with recent logs
             const habit = await tx.habit.findUnique({
@@ -267,7 +268,6 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
             await updateChallengeProgress(userId, dateObj, currentStreak, xpBase, tx);
 
             // 9. Evaluate & Award Badges (Atomic - passing tx)
-            // We need to build context using the TRANSACTION client to see the latest updates
             const ctx = await buildEvaluationContext(userId, tx);
             const newBadges = await evaluateAndAwardBadges(ctx, tx);
 
@@ -282,6 +282,9 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
                 habitId: id,
                 alreadyLogged: false
             };
+        }, {
+            timeout: 30000, // 30 seconds - gamification operations can be slow
+            maxWait: 10000  // 10 seconds max wait to acquire transaction
         });
 
         // Audit log (outside transaction - non-critical side effect which doesn't affect data integrity)

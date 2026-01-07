@@ -61,7 +61,8 @@ export function validateUUID(paramName: string = 'id') {
     return (req: Request, res: Response, next: NextFunction): void => {
         const id = req.params[paramName];
         if (!id || !isValidUUID(id)) {
-            return res.status(400).json({ error: `Invalid ${paramName} format` });
+            res.status(400).json({ error: `Invalid ${paramName} format` });
+            return;
         }
         next();
     };

@@ -112,16 +112,18 @@ export const checkLockout = async (
     const ipAddress = getClientIp(req);
 
     if (!email) {
-        return next();
+        next();
+        return;
     }
 
     const lockoutStatus = await checkAccountLockout(email, ipAddress);
 
     if (lockoutStatus.locked) {
-        return res.status(429).json({
+        res.status(429).json({
             error: 'Account temporarily locked due to too many failed login attempts',
             remainingTime: lockoutStatus.remainingTime
         });
+        return;
     }
 
     next();
