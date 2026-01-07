@@ -15,7 +15,7 @@ COPY . .
 
 # Build client and server
 RUN cd client && npm run build
-RUN cd server && npm run build
+RUN cd server && npx prisma generate && npm run build
 
 # Environment setup
 ENV NODE_ENV=production

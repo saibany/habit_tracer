@@ -180,9 +180,9 @@ export const getXpHistory = async (req: AuthRequest, res: Response) => {
         ]);
 
         // Create lookup maps for O(1) access
-        const habitMap = new Map(habits.map(h => [h.id, h]));
-        const badgeMap = new Map(badges.map(b => [b.id, b]));
-        const challengeMap = new Map(challenges.map(c => [c.id, c]));
+        const habitMap = new Map(habits.map(h => [h.id, h] as const));
+        const badgeMap = new Map(badges.map(b => [b.id, b] as const));
+        const challengeMap = new Map(challenges.map(c => [c.id, c] as const));
 
         // Enrich transactions with source details (no additional queries)
         const enrichedTransactions = transactions.map((t) => {
@@ -270,7 +270,7 @@ export const getLevelInfo = async (req: AuthRequest, res: Response) => {
         if (!user) return res.status(404).json({ error: 'User not found' });
 
         // Generate level curve preview (next 10 levels)
-        const levelCurve = [];
+        const levelCurve: { level: number; xpRequired: number; xpForNext: number }[] = [];
         for (let i = 1; i <= Math.max(10, user.level + 5); i++) {
             levelCurve.push({
                 level: i,
