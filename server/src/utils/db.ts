@@ -2,8 +2,14 @@ import prisma from './prisma';
 
 export const checkDatabaseConnection = async (): Promise<boolean> => {
     try {
-        // Simple query to verify connection
-        await prisma.$queryRaw`SELECT 1`;
+        // Simple query to verify connection with timeout
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Database connection timeout')), 5000)
+        );
+        await Promise.race([
+            prisma.$queryRaw`SELECT 1`,
+            timeoutPromise
+        ]);
         console.log('✅ Database connection successful');
         return true;
     } catch (error) {

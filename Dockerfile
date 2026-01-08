@@ -24,5 +24,8 @@ ENV PORT=5000
 # Expose the port
 EXPOSE 5000
 
-# Start the server
-CMD ["node", "server/dist/app.js"]
+# Copy prisma schema for migrations
+COPY server/prisma ./server/prisma
+
+# Start the server - run migrations first, then start node
+CMD ["sh", "-c", "cd server && npx prisma migrate deploy && cd .. && node server/dist/app.js"]
