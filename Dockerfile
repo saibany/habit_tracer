@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+# Install OpenSSL - required for Prisma to connect to PostgreSQL
+RUN apk add --no-cache openssl openssl-dev
+
 WORKDIR /app
 
 # Copy package definitions
