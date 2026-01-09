@@ -283,8 +283,8 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
                 alreadyLogged: false
             };
         }, {
-            timeout: 30000, // 30 seconds - gamification operations can be slow
-            maxWait: 10000  // 10 seconds max wait to acquire transaction
+            timeout: 15000, // 15 seconds - reduced for Railway
+            maxWait: 5000   // 5 seconds max wait to acquire transaction
         });
 
         // Audit log (outside transaction - non-critical side effect which doesn't affect data integrity)

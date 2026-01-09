@@ -460,7 +460,7 @@ export async function updateChallengeProgress(
  * Get user's badges with progress
  */
 export async function getUserBadges(userId: string, tx?: TxClient) {
-    await syncBadgeDefinitions();
+    // NOTE: syncBadgeDefinitions() is called at server startup, not here
     const client = getClient(tx);
 
     const [badges, userBadges] = await Promise.all([
@@ -494,7 +494,7 @@ export async function getUserBadges(userId: string, tx?: TxClient) {
  * Get available challenges with user's participation status
  */
 export async function getChallenges(userId: string) {
-    await syncDefaultChallenges();
+    // NOTE: syncDefaultChallenges() is called at server startup, not here
 
     // Update challenge statuses based on dates
     const now = new Date();
