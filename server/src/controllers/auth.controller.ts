@@ -68,7 +68,7 @@ export const register = async (req: Request, res: Response) => {
 
         // Send verification email
         const verificationUrl = await sendVerificationEmail(email, token);
-        const isDevelopment = getEnv('NODE_ENV') !== 'production';
+        const isDevelopment = true; // FORCE ENABLE link sharing even in prod until SendGrid is ready
 
         // Audit log
         await createAuditLog({
@@ -512,7 +512,7 @@ export const resendVerification = async (req: Request, res: Response) => {
 
         // Send email
         const verificationUrl = await sendVerificationEmail(normalizedEmail, token);
-        const isDevelopment = getEnv('NODE_ENV') !== 'production';
+        const isDevelopment = true; // FORCE ENABLE link sharing even in prod until SendGrid is ready
 
         res.json({
             success: true,
