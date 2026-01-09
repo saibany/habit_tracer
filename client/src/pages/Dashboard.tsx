@@ -44,11 +44,17 @@ export const Dashboard = () => {
         });
     }, [habits, todayDayOfWeek]);
 
+    // Error state for showing failed operations
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
     const handleToggleHabit = (e: React.MouseEvent, habitId: string, isCompleted: boolean) => {
         e.stopPropagation(); // Prevent navigation when clicking checkbox
 
         // Prevent double-clicks / race conditions
         if (pendingHabits.has(habitId)) return;
+
+        // Clear any previous error
+        setErrorMessage(null);
 
         // Mark habit as pending
         setPendingHabits(prev => new Set(prev).add(habitId));
@@ -61,8 +67,16 @@ export const Dashboard = () => {
             });
         };
 
+        const handleError = (error: any) => {
+            console.error('[Dashboard] Habit toggle failed:', error);
+            setErrorMessage('Failed to update habit. Please check your connection and try again.');
+            // Auto-clear error after 5 seconds
+            setTimeout(() => setErrorMessage(null), 5000);
+        };
+
         if (isCompleted) {
             undoLog.mutate({ id: habitId, date: today }, {
+                onError: handleError,
                 onSettled: clearPending
             });
         } else {
@@ -72,6 +86,7 @@ export const Dashboard = () => {
                         setUnlockedBadge(data.newBadges[0]);
                     }
                 },
+                onError: handleError,
                 onSettled: clearPending
             });
         }
@@ -90,6 +105,24 @@ export const Dashboard = () => {
 
     return (
         <div className="space-y-8 max-w-6xl mx-auto">
+            {/* Error Banner */}
+            {errorMessage && (
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl flex items-center justify-between"
+                >
+                    <span className="text-sm font-medium">{errorMessage}</span>
+                    <button
+                        onClick={() => setErrorMessage(null)}
+                        className="text-red-500 hover:text-red-600 text-lg font-bold"
+                    >
+                        ×
+                    </button>
+                </motion.div>
+            )}
+
             <AnimatePresence>
                 {isModalOpen && (
                     <CreateHabitModal

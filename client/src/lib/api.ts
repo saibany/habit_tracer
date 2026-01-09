@@ -7,7 +7,7 @@ const api = axios.create({
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest' // CSRF protection indicator
     },
-    timeout: 30000, // 30 second timeout
+    timeout: 10000, // 10 second timeout - fail fast
     validateStatus: (status) => status < 500 // Don't throw on 4xx errors
 });
 

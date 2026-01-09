@@ -186,134 +186,105 @@ export const deleteHabit = async (req: AuthRequest, res: Response) => {
 };
 
 // ============================================
-// LOG HABIT COMPLETION (OPTIMIZED FOR PGBOUNCER)
+// LOG HABIT COMPLETION - ULTRA MINIMAL (NO GAMIFICATION)
 // ============================================
 export const logHabit = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     const { id } = req.params;
     const { date, value = 1, notes } = req.body;
 
-    // Sanitize notes if provided
     const sanitizedNotes = notes ? sanitizeInput(notes) : undefined;
-
     if (!date) return res.status(400).json({ error: "Date is required" });
 
     const dateObj = startOfDay(new Date(date));
     const userId = req.user.userId;
 
+    console.log(`[Habits] logHabit START: habitId=${id}, userId=${userId}, date=${date}`);
+    const startTime = Date.now();
+
     try {
-        // STEP 1: Fast core operation - log habit and update streak (no gamification)
-        // This must succeed for the habit to be marked complete
+        // STEP 1: Get habit (single query)
         const habit = await prisma.habit.findUnique({
             where: { id, userId },
-            include: {
-                logs: {
-                    orderBy: { date: 'desc' },
-                    take: 100
-                }
-            }
+            include: { logs: { orderBy: { date: 'desc' }, take: 30 } }
         });
 
         if (!habit) {
+            console.log(`[Habits] Habit not found: ${id}`);
             return res.status(404).json({ error: "Habit not found" });
         }
 
-        // Check if already logged today (idempotency)
+        console.log(`[Habits] Habit found in ${Date.now() - startTime}ms`);
+
+        // STEP 2: Check if already logged (idempotency)
         const existingLog = habit.logs.find(l => isSameDay(l.date, dateObj));
         if (existingLog?.completed) {
-            const user = await prisma.user.findUnique({ where: { id: userId } });
+            console.log(`[Habits] Already logged today, returning cached`);
             return res.json({
                 log: existingLog,
                 streak: { current: habit.currentStreak, longest: habit.longestStreak },
                 xpEarned: 0,
-                newTotalXp: user?.xp || 0,
-                message: 'Already completed today',
+                newTotalXp: 0,
                 newBadges: []
             });
         }
 
-        // Calculate XP (base 10 + streak bonus, capped)
+        // STEP 3: Calculate XP (just for response, not actually awarded yet)
         const xpBase = Math.min(10 + habit.currentStreak * 2, 50);
 
-        // Upsert log - this is the critical operation
+        // STEP 4: Upsert log (single query)
         const log = await prisma.habitLog.upsert({
             where: { habitId_date: { habitId: id, date: dateObj } },
             update: { value, completed: true, notes: sanitizedNotes, xpEarned: xpBase },
             create: { habitId: id, date: dateObj, value, completed: true, notes: sanitizedNotes, xpEarned: xpBase }
         });
 
-        // Calculate new streak
+        console.log(`[Habits] Log upserted in ${Date.now() - startTime}ms`);
+
+        // STEP 5: Calculate streak locally (no additional queries)
         const allLogs = [log, ...habit.logs.filter(l => !isSameDay(l.date, dateObj))];
         const { currentStreak, longestStreak } = calculateStreak(allLogs, dateObj);
 
-        // Update habit streak
+        // STEP 6: Update habit streak (single query)
         await prisma.habit.update({
             where: { id },
-            data: {
-                currentStreak,
-                longestStreak,
-                lastCompletedAt: dateObj
-            }
+            data: { currentStreak, longestStreak, lastCompletedAt: dateObj }
         });
 
-        // STEP 2: Gamification updates - these can fail without rolling back the habit log
-        // We wrap each in try-catch to ensure partial failures don't break the response
-        let xpResult: { awarded: boolean; newXp: number; levelUp?: any } = { awarded: false, newXp: 0, levelUp: undefined };
-        let newBadges: any[] = [];
+        console.log(`[Habits] Streak updated in ${Date.now() - startTime}ms`);
 
+        // STEP 7: Award XP directly (single query, no transaction)
+        let newTotalXp = 0;
         try {
-            // Award XP - no transaction, idempotent
-            xpResult = await awardXp(userId, xpBase, 'habit_complete', id, dateObj);
-        } catch (xpError) {
-            console.error('[Habits] XP award failed (non-fatal):', xpError);
-        }
-
-        try {
-            // Update challenge progress - no transaction
-            await updateChallengeProgress(userId, dateObj, currentStreak, xpBase);
-        } catch (challengeError) {
-            console.error('[Habits] Challenge update failed (non-fatal):', challengeError);
-        }
-
-        try {
-            // Evaluate badges - no transaction
-            const ctx = await buildEvaluationContext(userId);
-            newBadges = await evaluateAndAwardBadges(ctx);
-        } catch (badgeError) {
-            console.error('[Habits] Badge evaluation failed (non-fatal):', badgeError);
-        }
-
-        // Audit log (non-critical)
-        createAuditLog({
-            userId,
-            action: 'habit_complete',
-            entity: 'habit',
-            entityId: id,
-            metadata: { xpEarned: xpBase, streak: currentStreak }
-        }).catch(err => console.error('[Habits] Audit log failed:', err));
-
-        // Get final XP from database if award failed
-        let finalXp = xpResult.newXp;
-        if (!xpResult.awarded) {
+            const user = await prisma.user.update({
+                where: { id: userId },
+                data: { xp: { increment: xpBase } }
+            });
+            newTotalXp = user.xp;
+            console.log(`[Habits] XP awarded in ${Date.now() - startTime}ms`);
+        } catch (xpErr) {
+            console.error('[Habits] XP award failed (non-fatal):', xpErr);
+            // Get current XP anyway
             const user = await prisma.user.findUnique({ where: { id: userId } });
-            finalXp = user?.xp || 0;
+            newTotalXp = user?.xp || 0;
         }
 
+        const totalTime = Date.now() - startTime;
+        console.log(`[Habits] logHabit COMPLETE in ${totalTime}ms`);
+
+        // Return response immediately
         res.json({
             log,
             streak: { current: currentStreak, longest: longestStreak },
             xpEarned: xpBase,
-            newLevel: xpResult.levelUp?.newLevel,
-            levelUp: xpResult.levelUp,
-            newBadges,
-            newTotalXp: finalXp
+            newTotalXp,
+            newBadges: [] // Skip badge evaluation for now
         });
+
     } catch (e: unknown) {
-        console.error('[Habits] Error logging habit:', e);
-        if (e instanceof Error && e.message === "Habit not found") {
-            return res.status(404).json({ error: "Habit not found" });
-        }
-        res.status(500).json({ error: "Failed to log habit" });
+        const totalTime = Date.now() - startTime;
+        console.error(`[Habits] logHabit FAILED after ${totalTime}ms:`, e);
+        res.status(500).json({ error: "Failed to log habit. Please try again." });
     }
 };
 
