@@ -30,5 +30,5 @@ EXPOSE 5000
 # Copy prisma schema for migrations
 COPY server/prisma ./server/prisma
 
-# Start the server - run migrations first, then start node
-CMD ["sh", "-c", "cd server && npx prisma migrate deploy && cd .. && node server/dist/app.js"]
+# Start the server - run migrations in background, start node immediately
+CMD ["sh", "-c", "(cd server && npx prisma migrate deploy) & node server/dist/app.js"]
