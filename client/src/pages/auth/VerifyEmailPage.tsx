@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { AuthLayout } from '../../components/auth/AuthLayout';
+import { Button } from '../../components/ui/Button';
 import api from '../../lib/api';
 
 export const VerifyEmailPage = () => {
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
     const token = searchParams.get('token');
 
     const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'expired'>('loading');
@@ -38,85 +41,112 @@ export const VerifyEmailPage = () => {
         verifyEmail();
     }, [token]);
 
-    return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-100 dark:border-slate-700 text-center"
-            >
-                {status === 'loading' && (
-                    <>
-                        <Loader2 className="w-16 h-16 animate-spin text-indigo-500 mx-auto mb-4" />
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">
-                            Verifying your email...
-                        </h1>
-                        <p className="text-slate-500 dark:text-slate-400">
-                            Please wait while we verify your email address.
-                        </p>
-                    </>
-                )}
-
-                {status === 'success' && (
-                    <>
-                        <div className="w-20 h-20 bg-teal-100 dark:bg-teal-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <CheckCircle className="w-10 h-10 text-teal-500" />
-                        </div>
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">
-                            Email Verified!
-                        </h1>
-                        <p className="text-slate-500 dark:text-slate-400 mb-6">
-                            {message}
-                        </p>
-                        <Link
-                            to="/login"
-                            className="inline-block w-full bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg"
+    const getStatusContent = () => {
+        switch (status) {
+            case 'loading':
+                return {
+                    icon: <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />,
+                    title: "Verifying Email...",
+                    desc: "Please wait while we verify your email address.",
+                    action: null
+                };
+            case 'success':
+                return {
+                    icon: <CheckCircle className="w-12 h-12 text-teal-500" />,
+                    title: "Email Verified!",
+                    desc: message,
+                    action: (
+                        <Button
+                            onClick={() => navigate('/login')}
+                            fullWidth
+                            size="lg"
                         >
-                            Go to Login
-                        </Link>
-                    </>
-                )}
-
-                {status === 'error' && (
-                    <>
-                        <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <XCircle className="w-10 h-10 text-red-500" />
-                        </div>
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">
-                            Verification Failed
-                        </h1>
-                        <p className="text-slate-500 dark:text-slate-400 mb-6">
-                            {message}
-                        </p>
-                        <Link
-                            to="/login"
-                            className="inline-block w-full bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-semibold py-3.5 rounded-xl transition-all"
+                            Continue to Login
+                        </Button>
+                    )
+                };
+            case 'error':
+                return {
+                    icon: <XCircle className="w-12 h-12 text-red-500" />,
+                    title: "Verification Failed",
+                    desc: message,
+                    action: (
+                        <Button
+                            variant="secondary"
+                            onClick={() => navigate('/login')}
+                            fullWidth
                         >
                             Back to Login
-                        </Link>
-                    </>
-                )}
-
-                {status === 'expired' && (
-                    <>
-                        <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <RefreshCw className="w-10 h-10 text-amber-500" />
+                        </Button>
+                    )
+                };
+            case 'expired':
+                return {
+                    icon: <RefreshCw className="w-12 h-12 text-amber-500" />,
+                    title: "Link Expired",
+                    desc: message,
+                    action: (
+                        <div className="space-y-3">
+                            <Button
+                                onClick={() => navigate('/login')}
+                                fullWidth
+                                size="lg"
+                            >
+                                Request New Link
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                onClick={() => navigate('/login')}
+                                fullWidth
+                                size="sm"
+                            >
+                                Back to Login
+                            </Button>
                         </div>
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">
-                            Link Expired
-                        </h1>
-                        <p className="text-slate-500 dark:text-slate-400 mb-6">
-                            {message}
-                        </p>
-                        <Link
-                            to="/login"
-                            className="inline-block w-full bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg"
+                    )
+                };
+        }
+    };
+
+    const content = getStatusContent();
+
+    return (
+        <AuthLayout>
+            <div className="text-center py-6">
+                <motion.div
+                    key={status}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                    className="w-24 h-24 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-6 border border-slate-100 dark:border-slate-700/50"
+                >
+                    {content.icon}
+                </motion.div>
+
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                >
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+                        {content.title}
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-sm mx-auto">
+                        {content.desc}
+                    </p>
+
+                    {content.action && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.2 }}
                         >
-                            Request New Link
-                        </Link>
-                    </>
-                )}
-            </motion.div>
-        </div>
+                            {content.action}
+                        </motion.div>
+                    )}
+                </motion.div>
+            </div>
+        </AuthLayout>
     );
 };
+

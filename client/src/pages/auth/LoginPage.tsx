@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
-import { Loader2, CheckCircle } from 'lucide-react';
+import { Mail, Lock, CheckCircle, AlertTriangle, ArrowRight } from 'lucide-react';
+import { AuthLayout } from '../../components/auth/AuthLayout';
+import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { motion, AnimatePresence } from 'framer-motion';
+import api from '../../lib/api';
 
 export const LoginPage = () => {
     const navigate = useNavigate();
@@ -11,8 +15,10 @@ export const LoginPage = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [errorCode, setErrorCode] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isResendLoading, setIsResendLoading] = useState(false);
 
     // Check for success message from registration
     useEffect(() => {
@@ -32,6 +38,7 @@ export const LoginPage = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setErrorCode('');
         setSuccessMessage('');
         setIsLoading(true);
 
@@ -39,88 +46,148 @@ export const LoginPage = () => {
             await login(email, password);
             navigate('/');
         } catch (err: any) {
-            // Show detailed error message from server
-            const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Login failed. Please check your credentials and try again.';
+            const response = err.response?.data;
+            const errorMessage = response?.message || response?.error || 'Login failed. Please check your credentials.';
             setError(errorMessage);
+            setErrorCode(response?.code || '');
         } finally {
             setIsLoading(false);
         }
     };
 
+    const handleResendVerification = async () => {
+        setIsResendLoading(true);
+        try {
+            await api.post('/auth/resend-verification', { email });
+            setSuccessMessage('Verification email resent! Please check your inbox.');
+            setError('');
+            setErrorCode('');
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to resend email.';
+            setError(errorMessage);
+        } finally {
+            setIsResendLoading(false);
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-100 dark:border-slate-700"
-            >
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-500 to-indigo-600 mb-2">Welcome Back</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Enter your credentials to access your account</p>
-                </div>
+        <AuthLayout
+            title="Welcome Back"
+            subtitle="Enter your credentials to access your account"
+        >
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <AnimatePresence mode="wait">
+                    {successMessage && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="p-4 bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800 rounded-xl flex items-start gap-3"
+                        >
+                            <CheckCircle className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
+                            <p className="text-sm text-teal-700 dark:text-teal-300">{successMessage}</p>
+                        </motion.div>
+                    )}
 
-                {successMessage && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mb-4 p-3 bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800 rounded-xl text-teal-600 dark:text-teal-400 text-sm flex items-center gap-2"
-                    >
-                        <CheckCircle className="w-4 h-4" />
-                        {successMessage}
-                    </motion.div>
-                )}
+                    {error && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl"
+                        >
+                            <div className="flex items-start gap-3">
+                                <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <p className="text-sm font-medium text-red-700 dark:text-red-300">{error}</p>
 
-                {error && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm"
-                    >
-                        {error}
-                    </motion.div>
-                )}
+                                    {errorCode === 'EMAIL_NOT_VERIFIED' && (
+                                        <button
+                                            type="button"
+                                            onClick={handleResendVerification}
+                                            disabled={isResendLoading}
+                                            className="text-xs font-semibold text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 underline disabled:opacity-50"
+                                        >
+                                            {isResendLoading ? 'Sending...' : 'Resend Verification Email'}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email Address</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-800 outline-none transition-all text-slate-900 dark:text-white"
-                            placeholder="you@example.com"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
-                        <input
+                <div className="space-y-4">
+                    <Input
+                        label="Email Address"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        required
+                        autoComplete="username"
+                        leftIcon={<Mail className="w-4 h-4" />}
+                        error={error && !errorCode ? " " : undefined} // Only highlight if generic error, distinct from password
+                    />
+
+                    <div className="space-y-1">
+                        <Input
+                            label="Password"
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            required
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-800 outline-none transition-all text-slate-900 dark:text-white"
                             placeholder="••••••••"
+                            required
+                            autoComplete="current-password"
+                            leftIcon={<Lock className="w-4 h-4" />}
+                            error={error && !errorCode ? " " : undefined}
                         />
+                        <div className="flex justify-end">
+                            <Link
+                                to="/forgot-password"
+                                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors"
+                            >
+                                Forgot password?
+                            </Link>
+                        </div>
                     </div>
+                </div>
 
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
-                    >
-                        {isLoading ? (
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                            'Sign In'
-                        )}
-                    </button>
-                </form>
+                <Button
+                    type="submit"
+                    isLoading={isLoading}
+                    fullWidth
+                    size="lg"
+                    rightIcon={<ArrowRight className="w-4 h-4" />}
+                >
+                    Sign In
+                </Button>
 
-                <p className="text-center mt-6 text-slate-500 dark:text-slate-400 text-sm">
-                    Don't have an account? <Link to="/register" className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Create one</Link>
+                <div className="relative my-8">
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-slate-200 dark:border-slate-700"></div>
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-white dark:bg-slate-900 px-2 text-slate-500">Or continue with</span>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <Button variant="outline" type="button" size="default">
+                        Google
+                    </Button>
+                    <Button variant="outline" type="button" size="default">
+                        GitHub
+                    </Button>
+                </div>
+
+                <p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-6">
+                    Don't have an account?{' '}
+                    <Link to="/register" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors">
+                        Create account
+                    </Link>
                 </p>
-            </motion.div>
-        </div>
+            </form>
+        </AuthLayout>
     );
 };
