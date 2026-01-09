@@ -136,16 +136,23 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 });
 
 if (require.main === module) {
-    // Startup
+    // START SERVER FIRST - so healthcheck can respond immediately
+    app.listen(PORT, () => {
+        console.log(`\n✅ Server running on http://localhost:${PORT}`);
+        console.log(`   Health: http://localhost:${PORT}/health`);
+        console.log(`   API:    http://localhost:${PORT}/api/v1\n`);
+    });
+
+    // Initialize database and gamification in background
     (async () => {
-        // Check database connection on startup
+        // Check database connection
         const dbConnected = await checkDatabaseConnection();
         if (!dbConnected) {
-            console.error('❌ Could not connect to database. Check your DATABASE_URL in .env');
-            process.exit(1);
+            console.error('❌ Could not connect to database. Check your DATABASE_URL');
+            console.error('   Server will continue running but may have limited functionality');
         }
 
-        // Sync gamification data (badges, challenges) at startup
+        // Sync gamification data (badges, challenges)
         try {
             const { syncBadgeDefinitions, syncDefaultChallenges } = await import('./lib/gamificationService');
             await syncBadgeDefinitions();
@@ -154,12 +161,6 @@ if (require.main === module) {
         } catch (e) {
             console.warn('⚠️ Gamification sync failed:', e);
         }
-
-        app.listen(PORT, () => {
-            console.log(`\n✅ Server running on http://localhost:${PORT}`);
-            console.log(`   Health: http://localhost:${PORT}/health`);
-            console.log(`   API:    http://localhost:${PORT}/api/v1\n`);
-        });
     })();
 }
 
