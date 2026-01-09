@@ -58,8 +58,17 @@ export const LoginPage = () => {
     const handleResendVerification = async () => {
         setIsResendLoading(true);
         try {
-            await api.post('/auth/resend-verification', { email });
-            setSuccessMessage('Verification email resent! Please check your inbox.');
+            const { data } = await api.post('/auth/resend-verification', { email });
+
+            // @ts-ignore - metadata is added in dev mode
+            if (data?.metadata?.verificationUrl) {
+                setSuccessMessage(`DEV MODE: Verification link: ${data.metadata.verificationUrl}`);
+                // Also open in new tab for convenience
+                window.open(data.metadata.verificationUrl, '_blank');
+            } else {
+                setSuccessMessage('Verification email resent! Please check your inbox.');
+            }
+
             setError('');
             setErrorCode('');
         } catch (err: any) {

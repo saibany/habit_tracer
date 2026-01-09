@@ -37,7 +37,7 @@ function getBaseUrl(): string {
  * Send verification email
  * Phase 1: Just logs to console
  */
-export async function sendVerificationEmail(email: string, token: string): Promise<void> {
+export async function sendVerificationEmail(email: string, token: string): Promise<string> {
     const baseUrl = getBaseUrl();
     const verifyUrl = `${baseUrl}/verify-email?token=${token}`;
 
@@ -49,6 +49,8 @@ export async function sendVerificationEmail(email: string, token: string): Promi
     console.log(`\nClick here to verify your email:`);
     console.log(`${verifyUrl}`);
     console.log('========================================\n');
+
+    return verifyUrl;
 }
 
 /**

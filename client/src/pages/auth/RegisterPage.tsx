@@ -41,8 +41,8 @@ export const RegisterPage = () => {
         setIsLoading(true);
 
         try {
-            await api.post('/auth/register', { email, password, name });
-            setSuccess(true);
+            const { data } = await api.post('/auth/register', { email, password, name });
+            setSuccess(data); // Store full response to access metadata
 
             // Redirect to login after 3 seconds
             setTimeout(() => {
@@ -58,6 +58,10 @@ export const RegisterPage = () => {
     };
 
     if (success) {
+        // Check for dev mode verification URL
+        // @ts-ignore - metadata is added in dev mode
+        const verificationUrl = (success as any)?.metadata?.verificationUrl;
+
         return (
             <AuthLayout>
                 <motion.div
@@ -74,14 +78,44 @@ export const RegisterPage = () => {
                             <CheckCircle className="w-10 h-10 text-teal-500" />
                         </div>
                     </motion.div>
+
                     <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Check your email!</h2>
-                    <p className="text-slate-500 dark:text-slate-400 mb-6">
-                        We've sent a verification link to<br />
-                        <span className="font-medium text-slate-900 dark:text-white">{email}</span>
-                    </p>
-                    <p className="text-sm text-slate-400 dark:text-slate-500">
-                        Redirecting to login in 3 seconds...
-                    </p>
+
+                    {verificationUrl ? (
+                        <div className="my-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-xl text-left">
+                            <h3 className="text-sm font-bold text-amber-800 dark:text-amber-400 mb-2 uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                Dev Mode Enabled
+                            </h3>
+                            <p className="text-sm text-amber-700 dark:text-amber-300 mb-3">
+                                Email sending is disabled. Use the link below to verify:
+                            </p>
+                            <a
+                                href={verificationUrl}
+                                className="block w-full py-2 px-4 bg-amber-100 dark:bg-amber-800/50 text-amber-900 dark:text-amber-200 text-center rounded-lg font-mono text-xs break-all hover:bg-amber-200 dark:hover:bg-amber-800 transition-colors"
+                            >
+                                {verificationUrl}
+                            </a>
+                            <Button
+                                className="mt-3 w-full bg-amber-500 hover:bg-amber-600 border-amber-600 text-white"
+                                onClick={() => window.location.href = verificationUrl}
+                            >
+                                Verify Account Now
+                            </Button>
+                        </div>
+                    ) : (
+                        <p className="text-slate-500 dark:text-slate-400 mb-6">
+                            We've sent a verification link to<br />
+                            <span className="font-medium text-slate-900 dark:text-white">{email}</span>
+                        </p>
+                    )}
+
+                    {!verificationUrl && (
+                        <p className="text-sm text-slate-400 dark:text-slate-500">
+                            Redirecting to login in 3 seconds...
+                        </p>
+                    )}
+
                     <Button
                         variant="outline"
                         onClick={() => navigate('/login')}

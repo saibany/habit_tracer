@@ -67,7 +67,8 @@ export const register = async (req: Request, res: Response) => {
         });
 
         // Send verification email
-        await sendVerificationEmail(email, token);
+        const verificationUrl = await sendVerificationEmail(email, token);
+        const isDevelopment = getEnv('NODE_ENV') !== 'production';
 
         // Audit log
         await createAuditLog({
@@ -79,7 +80,9 @@ export const register = async (req: Request, res: Response) => {
         res.status(201).json({
             success: true,
             message: 'Account created! Please check your email to verify your account.',
-            requiresVerification: true
+            requiresVerification: true,
+            // Dev helper: return link directly
+            metadata: isDevelopment ? { verificationUrl } : undefined
         });
     } catch (e: unknown) {
         console.error('[Auth] Register error:', e);
@@ -508,11 +511,14 @@ export const resendVerification = async (req: Request, res: Response) => {
         });
 
         // Send email
-        await sendVerificationEmail(normalizedEmail, token);
+        const verificationUrl = await sendVerificationEmail(normalizedEmail, token);
+        const isDevelopment = getEnv('NODE_ENV') !== 'production';
 
         res.json({
             success: true,
-            message: 'A new verification email has been sent.'
+            message: 'A new verification email has been sent.',
+            // Dev helper: return link directly
+            metadata: isDevelopment ? { verificationUrl } : undefined
         });
     } catch (e) {
         console.error('[Auth] Resend verification error:', e);
