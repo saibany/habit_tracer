@@ -436,6 +436,10 @@ export const verifyEmail = async (req: Request, res: Response) => {
             ipAddress: getClientIp(req)
         });
 
+        // Clear any rate limit lockouts for this user after successful verification
+        const { clearFailedAttempts } = await import('../middleware/accountLockout');
+        clearFailedAttempts(user.email, getClientIp(req));
+
         res.json({
             success: true,
             message: 'Email verified successfully! You can now log in.'
