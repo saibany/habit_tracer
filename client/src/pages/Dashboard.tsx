@@ -17,6 +17,8 @@ export const Dashboard = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isXpModalOpen, setIsXpModalOpen] = useState(false);
     const [unlockedBadge, setUnlockedBadge] = useState<any | null>(null);
+    // Track which habits have pending mutations to prevent race conditions
+    const [pendingHabits, setPendingHabits] = useState<Set<string>>(new Set());
 
     const { data: habits, isLoading: habitsLoading } = useHabits('active');
     const { data: summary } = useAnalyticsSummary();
@@ -44,15 +46,33 @@ export const Dashboard = () => {
 
     const handleToggleHabit = (e: React.MouseEvent, habitId: string, isCompleted: boolean) => {
         e.stopPropagation(); // Prevent navigation when clicking checkbox
+
+        // Prevent double-clicks / race conditions
+        if (pendingHabits.has(habitId)) return;
+
+        // Mark habit as pending
+        setPendingHabits(prev => new Set(prev).add(habitId));
+
+        const clearPending = () => {
+            setPendingHabits(prev => {
+                const next = new Set(prev);
+                next.delete(habitId);
+                return next;
+            });
+        };
+
         if (isCompleted) {
-            undoLog.mutate({ id: habitId, date: today });
+            undoLog.mutate({ id: habitId, date: today }, {
+                onSettled: clearPending
+            });
         } else {
             logHabit.mutate({ id: habitId, date: today }, {
                 onSuccess: (data: any) => {
                     if (data.newBadges && data.newBadges.length > 0) {
                         setUnlockedBadge(data.newBadges[0]);
                     }
-                }
+                },
+                onSettled: clearPending
             });
         }
     };
@@ -281,6 +301,7 @@ export const Dashboard = () => {
                                 const isCompletedToday = habit.logs.some(
                                     l => format(new Date(l.date), 'yyyy-MM-dd') === today && l.completed
                                 );
+                                const isPending = pendingHabits.has(habit.id);
                                 return (
                                     <motion.div
                                         key={habit.id}
@@ -299,14 +320,19 @@ export const Dashboard = () => {
                                             {/* Checkbox */}
                                             <button
                                                 onClick={(e) => handleToggleHabit(e, habit.id, isCompletedToday)}
+                                                disabled={isPending}
                                                 className={cn(
                                                     "w-12 h-12 rounded-xl flex items-center justify-center transition-all shrink-0 shadow-sm",
-                                                    isCompletedToday
-                                                        ? "bg-teal-500 text-white shadow-teal-500/20 scale-95"
-                                                        : "bg-slate-100 dark:bg-white/5 text-slate-300 dark:text-slate-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 hover:text-teal-500 hover:scale-105"
+                                                    isPending
+                                                        ? "bg-slate-200 dark:bg-white/10 cursor-wait"
+                                                        : isCompletedToday
+                                                            ? "bg-teal-500 text-white shadow-teal-500/20 scale-95"
+                                                            : "bg-slate-100 dark:bg-white/5 text-slate-300 dark:text-slate-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 hover:text-teal-500 hover:scale-105"
                                                 )}
                                             >
-                                                {isCompletedToday && (
+                                                {isPending ? (
+                                                    <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                                                ) : isCompletedToday && (
                                                     <motion.svg
                                                         initial={{ scale: 0 }}
                                                         animate={{ scale: 1 }}
