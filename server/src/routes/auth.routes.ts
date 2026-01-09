@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login, logout, refreshAccessToken, me } from '../controllers/auth.controller';
+import { register, login, logout, refreshAccessToken, me, verifyEmail, resendVerification } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth';
 import { authLimiter, sensitiveLimiter } from '../middleware/rateLimit';
 import { checkLockout } from '../middleware/accountLockout';
@@ -12,5 +12,9 @@ router.post('/login', authLimiter, checkLockout, login);
 router.post('/logout', authenticate, logout);
 router.post('/refresh', authLimiter, refreshAccessToken);
 router.get('/me', authenticate, me);
+
+// Email verification
+router.get('/verify-email', verifyEmail);  // GET for email links
+router.post('/resend-verification', authLimiter, resendVerification);
 
 export default router;

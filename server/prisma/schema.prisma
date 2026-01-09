@@ -19,6 +19,15 @@ model User {
   name     String
   avatar   String?
 
+  // Email Verification
+  emailVerified           Boolean   @default(false)
+  emailVerificationToken  String?   // Hashed token
+  emailTokenExpiry        DateTime?
+
+  // Password Reset
+  passwordResetToken      String?   // Hashed token
+  passwordResetExpiry     DateTime?
+
   // Gamification
   xp    Int @default(0)
   level Int @default(1)

@@ -11,6 +11,7 @@ import { ChallengesPage } from './pages/ChallengesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { VerifyEmailPage } from './pages/auth/VerifyEmailPage';
 import { Loader2 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 
@@ -41,6 +42,7 @@ function App() {
             <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/verify-email" element={<VerifyEmailPage />} />
 
                 <Route path="/*" element={
                     <ProtectedRoute>
