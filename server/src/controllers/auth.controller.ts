@@ -100,7 +100,12 @@ export const register = async (req: Request, res: Response) => {
             });
         }
         console.error('[Auth] Registration error details:', e);
-        res.status(500).json({ error: 'Registration failed', message: 'Please try again or contact support if the problem persists' });
+        console.error('[Auth] Registration error details:', e);
+        res.status(500).json({
+            error: 'Registration failed',
+            message: (e as Error).message || 'An unexpected error occurred',
+            details: (e as Error).stack
+        });
     }
 };
 
