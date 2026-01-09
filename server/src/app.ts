@@ -112,12 +112,25 @@ app.get('/health', async (_req, res) => {
 
 // Serve static files from client (AFTER /health route)
 if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../../client/dist')));
+    const clientDistPath = path.join(__dirname, '../../client/dist');
+    console.log(`📂 Static files path: ${clientDistPath}`);
 
-    // Catch-all for SPA routing - MUST be last
-    app.get('*', (_req, res) => {
-        res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
-    });
+    // Check if path exists
+    const fs = require('fs');
+    if (fs.existsSync(clientDistPath)) {
+        console.log('✅ Client dist folder found');
+        app.use(express.static(clientDistPath));
+
+        // Catch-all for SPA routing - MUST be last
+        app.get('*', (_req, res) => {
+            res.sendFile(path.join(clientDistPath, 'index.html'));
+        });
+    } else {
+        console.error('❌ Client dist folder NOT found at:', clientDistPath);
+        app.get('*', (_req, res) => {
+            res.status(500).send('Client build not found. Check deployment.');
+        });
+    }
 }
 
 // Global Error Handler
