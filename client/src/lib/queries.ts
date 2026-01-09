@@ -297,15 +297,23 @@ export const useLogHabit = () => {
 
 export const useUndoHabitLog = () => {
     const queryClient = useQueryClient();
+    const { updateUser } = useAuth();
+
     return useMutation({
         mutationFn: async ({ id, date }: { id: string; date: string }) => {
             const { data } = await api.post(`/habits/${id}/undo`, { date });
-            return data;
+            return data as {
+                message: string;
+                xpRemoved: number;
+                newTotalXp: number;
+                streak: { current: number; longest: number };
+            };
         },
         onMutate: async ({ id, date }) => {
             await queryClient.cancelQueries({ queryKey: ['habits'] });
             const previousHabits = queryClient.getQueryData<Habit[]>(['habits', 'active']);
 
+            // Optimistic update - remove log and decrease streak
             if (previousHabits) {
                 queryClient.setQueryData<Habit[]>(['habits', 'active'], (old) => {
                     return old?.map(h => {
@@ -313,7 +321,7 @@ export const useUndoHabitLog = () => {
                             return {
                                 ...h,
                                 logs: h.logs.filter(l => l.date !== date),
-                                currentStreak: Math.max(0, h.currentStreak - 1) // Rough est
+                                currentStreak: Math.max(0, h.currentStreak - 1)
                             };
                         }
                         return h;
@@ -323,15 +331,34 @@ export const useUndoHabitLog = () => {
             return { previousHabits };
         },
         onError: (_err, _vars, context) => {
+            // Rollback on error
             if (context?.previousHabits) {
                 queryClient.setQueryData(['habits', 'active'], context.previousHabits);
             }
         },
-        onSuccess: () => {
-            // Invalidate analytics after undo
+        onSuccess: (data, variables) => {
+            // Update XP immediately in AuthContext
+            if (data.newTotalXp !== undefined) {
+                updateUser({ xp: data.newTotalXp });
+            }
+
+            // Update habit with server streak values
+            queryClient.setQueryData<Habit[]>(['habits', 'active'], (old) => {
+                return old?.map(h => {
+                    if (h.id === variables.id) {
+                        return {
+                            ...h,
+                            currentStreak: data.streak.current,
+                            longestStreak: data.streak.longest
+                        };
+                    }
+                    return h;
+                });
+            });
+
+            // Invalidate analytics
             queryClient.invalidateQueries({ queryKey: ['analytics'] });
             queryClient.invalidateQueries({ queryKey: ['heatmap'] });
-            queryClient.invalidateQueries({ queryKey: ['auth', 'user'] });
         }
     });
 };

@@ -303,7 +303,7 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
 };
 
 // ============================================
-// UNDO HABIT LOG (TRANSACTIONAL)
+// UNDO HABIT LOG - WITH XP REVERSION
 // ============================================
 export const undoLog = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -315,54 +315,77 @@ export const undoLog = async (req: AuthRequest, res: Response) => {
     const dateObj = startOfDay(new Date(date));
     const userId = req.user.userId;
 
+    console.log(`[Habits] undoLog START: habitId=${id}, userId=${userId}, date=${date}`);
+
     try {
-        const result = await prisma.$transaction(async (tx) => {
-            // 1. Find the log
-            const log = await tx.habitLog.findUnique({
+        const { withRetry } = await import('../utils/prisma');
+
+        // 1. Find the log
+        const log = await withRetry(
+            () => prisma.habitLog.findUnique({
                 where: { habitId_date: { habitId: id, date: dateObj } }
-            });
+            }),
+            'findLog'
+        );
 
-            if (!log) throw new Error("Log not found");
+        if (!log) {
+            return res.status(404).json({ error: "Log not found" });
+        }
 
-            // 2. Remove XP if earned
-            if (log.xpEarned > 0) {
-                await tx.user.update({
-                    where: { id: userId },
-                    data: { xp: { decrement: log.xpEarned } }
-                });
-            }
+        // 2. Get current user XP
+        const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+        const currentXp = currentUser?.xp || 0;
 
-            // 3. Delete log
-            await tx.habitLog.delete({
+        // 3. Calculate new XP (never go below 0)
+        const xpToRemove = log.xpEarned || 0;
+        const newXp = Math.max(0, currentXp - xpToRemove);
+
+        // 4. Update user XP (set to calculated value, not decrement)
+        await withRetry(
+            () => prisma.user.update({
+                where: { id: userId },
+                data: { xp: newXp }
+            }),
+            'updateXp'
+        );
+
+        // 5. Delete the log
+        await withRetry(
+            () => prisma.habitLog.delete({
                 where: { habitId_date: { habitId: id, date: dateObj } }
-            });
+            }),
+            'deleteLog'
+        );
 
-            // 4. Recalculate streak
-            const habit = await tx.habit.findUnique({
+        // 6. Recalculate streak
+        const habit = await prisma.habit.findUnique({
+            where: { id },
+            include: { logs: { orderBy: { date: 'desc' }, take: 100 } }
+        });
+
+        let currentStreak = 0;
+        let longestStreak = 0;
+
+        if (habit) {
+            const streakResult = calculateStreak(habit.logs, new Date());
+            currentStreak = streakResult.currentStreak;
+            longestStreak = streakResult.longestStreak;
+
+            await prisma.habit.update({
                 where: { id },
-                include: { logs: { orderBy: { date: 'desc' }, take: 100 } }
+                data: { currentStreak, longestStreak }
             });
+        }
 
-            if (habit) {
-                const { currentStreak, longestStreak } = calculateStreak(habit.logs, new Date());
-                await tx.habit.update({
-                    where: { id },
-                    data: { currentStreak, longestStreak }
-                });
-            }
+        console.log(`[Habits] undoLog COMPLETE: xpRemoved=${xpToRemove}, newTotalXp=${newXp}`);
 
-            return { xpRemoved: log.xpEarned };
+        // Return full data for frontend sync
+        res.json({
+            message: 'Log undone',
+            xpRemoved: xpToRemove,
+            newTotalXp: newXp,
+            streak: { current: currentStreak, longest: longestStreak }
         });
-
-        await createAuditLog({
-            userId,
-            action: 'habit_undo',
-            entity: 'habit',
-            entityId: id,
-            metadata: { xpRemoved: result.xpRemoved }
-        });
-
-        res.json({ message: 'Log undone', ...result });
     } catch (e: unknown) {
         console.error('[Habits] Error undoing log:', e);
         if (e instanceof Error && e.message === "Log not found") {

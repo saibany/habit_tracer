@@ -328,7 +328,7 @@ export const Dashboard = () => {
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="flex flex-col gap-3"
+                            className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600"
                         >
                             {todaysHabits.map((habit: Habit, index: number) => {
                                 const isCompletedToday = habit.logs.some(
