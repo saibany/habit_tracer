@@ -167,7 +167,7 @@ export const logout = async (req: AuthRequest, res: Response) => {
         const refreshToken = req.cookies?.refreshToken;
 
         if (refreshToken) {
-            // Delete session
+            // Delete session from database
             await prisma.session.deleteMany({
                 where: { refreshToken }
             });
@@ -181,13 +181,24 @@ export const logout = async (req: AuthRequest, res: Response) => {
             });
         }
 
-        // Clear cookies
-        res.clearCookie('token');
-        res.clearCookie('refreshToken');
+        // Clear cookies with matching options
+        const isProduction = getEnv('NODE_ENV') === 'production';
+        const clearOptions = {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: 'lax' as const,
+            path: '/'
+        };
+
+        res.clearCookie('token', clearOptions);
+        res.clearCookie('refreshToken', clearOptions);
 
         res.json({ message: 'Logged out successfully' });
     } catch (e) {
         console.error('[Auth] Logout error:', e);
+        // Still clear cookies even on error
+        res.clearCookie('token');
+        res.clearCookie('refreshToken');
         res.json({ message: 'Logged out' });
     }
 };
@@ -224,11 +235,14 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
             { expiresIn: JWT_EXPIRES_IN }
         );
 
+        // Set cookie with consistent options
+        const isProduction = getEnv('NODE_ENV') === 'production';
         res.cookie('token', accessToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: isProduction,
             sameSite: 'lax',
-            maxAge: 15 * 60 * 1000 // 15 minutes
+            maxAge: 15 * 60 * 1000, // 15 minutes
+            path: '/'
         });
 
         res.json({ message: 'Token refreshed' });
@@ -309,20 +323,24 @@ async function createTokens(userId: string, req: Request) {
 function setTokenCookies(res: Response, accessToken: string, refreshToken: string) {
     const isProduction = getEnv('NODE_ENV') === 'production';
 
+    // Cookie options for secure, cross-device compatible auth
+    const cookieOptions = {
+        httpOnly: true,           // Prevents JavaScript access (XSS protection)
+        secure: isProduction,     // HTTPS only in production
+        sameSite: 'lax' as const, // Lax allows cookies on top-level navigations, protects CSRF
+        path: '/'                 // Available on all routes
+    };
+
+    // Access token - short-lived (15 minutes)
     res.cookie('token', accessToken, {
-        httpOnly: true,
-        secure: isProduction, // Only send over HTTPS in production
-        sameSite: isProduction ? 'strict' : 'lax', // Stricter in production
-        maxAge: 15 * 60 * 1000, // 15 minutes
-        path: '/'
+        ...cookieOptions,
+        maxAge: 15 * 60 * 1000 // 15 minutes
     });
 
+    // Refresh token - long-lived (7 days)
     res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? 'strict' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        path: '/'
+        ...cookieOptions,
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 }
 
