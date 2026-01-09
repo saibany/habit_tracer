@@ -100,12 +100,10 @@ app.use('/api/v1/challenges', challengeRoutes);
 app.use('/api/v1/badges', badgeRoutes);
 app.use('/api/v1/xp', xpRoutes);
 
-// Health Check - MUST be before static file catch-all
-app.get('/health', async (_req, res) => {
-    const dbConnected = await checkDatabaseConnection();
-    res.status(dbConnected ? 200 : 503).json({
-        status: dbConnected ? 'ok' : 'degraded',
-        database: dbConnected ? 'connected' : 'disconnected',
+// Health Check - MUST return 200 immediately for Railway, no database check
+app.get('/health', (_req, res) => {
+    res.status(200).json({
+        status: 'ok',
         timestamp: new Date().toISOString()
     });
 });
