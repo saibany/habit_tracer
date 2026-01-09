@@ -100,16 +100,7 @@ app.use('/api/v1/challenges', challengeRoutes);
 app.use('/api/v1/badges', badgeRoutes);
 app.use('/api/v1/xp', xpRoutes);
 
-// Serve static files from client
-if (process.env.NODE_ENV === 'production') {
-    app.use(express.static(path.join(__dirname, '../../client/dist')));
-
-    app.get('*', (_req, res) => {
-        res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
-    });
-}
-
-// Health Check
+// Health Check - MUST be before static file catch-all
 app.get('/health', async (_req, res) => {
     const dbConnected = await checkDatabaseConnection();
     res.status(dbConnected ? 200 : 503).json({
@@ -118,6 +109,16 @@ app.get('/health', async (_req, res) => {
         timestamp: new Date().toISOString()
     });
 });
+
+// Serve static files from client (AFTER /health route)
+if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, '../../client/dist')));
+
+    // Catch-all for SPA routing - MUST be last
+    app.get('*', (_req, res) => {
+        res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
+    });
+}
 
 // Global Error Handler
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
