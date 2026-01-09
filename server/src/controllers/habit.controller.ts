@@ -186,7 +186,7 @@ export const deleteHabit = async (req: AuthRequest, res: Response) => {
 };
 
 // ============================================
-// LOG HABIT COMPLETION - ULTRA MINIMAL (NO GAMIFICATION)
+// LOG HABIT COMPLETION - WITH RETRY LOGIC
 // ============================================
 export const logHabit = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -203,11 +203,17 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
     const startTime = Date.now();
 
     try {
-        // STEP 1: Get habit (single query)
-        const habit = await prisma.habit.findUnique({
-            where: { id, userId },
-            include: { logs: { orderBy: { date: 'desc' }, take: 30 } }
-        });
+        // Import retry helper
+        const { withRetry } = await import('../utils/prisma');
+
+        // STEP 1: Get habit (with retry)
+        const habit = await withRetry(
+            () => prisma.habit.findUnique({
+                where: { id, userId },
+                include: { logs: { orderBy: { date: 'desc' }, take: 30 } }
+            }),
+            'findHabit'
+        );
 
         if (!habit) {
             console.log(`[Habits] Habit not found: ${id}`);
@@ -229,15 +235,18 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
             });
         }
 
-        // STEP 3: Calculate XP (just for response, not actually awarded yet)
+        // STEP 3: Calculate XP
         const xpBase = Math.min(10 + habit.currentStreak * 2, 50);
 
-        // STEP 4: Upsert log (single query)
-        const log = await prisma.habitLog.upsert({
-            where: { habitId_date: { habitId: id, date: dateObj } },
-            update: { value, completed: true, notes: sanitizedNotes, xpEarned: xpBase },
-            create: { habitId: id, date: dateObj, value, completed: true, notes: sanitizedNotes, xpEarned: xpBase }
-        });
+        // STEP 4: Upsert log (with retry)
+        const log = await withRetry(
+            () => prisma.habitLog.upsert({
+                where: { habitId_date: { habitId: id, date: dateObj } },
+                update: { value, completed: true, notes: sanitizedNotes, xpEarned: xpBase },
+                create: { habitId: id, date: dateObj, value, completed: true, notes: sanitizedNotes, xpEarned: xpBase }
+            }),
+            'upsertLog'
+        );
 
         console.log(`[Habits] Log upserted in ${Date.now() - startTime}ms`);
 
@@ -245,26 +254,31 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
         const allLogs = [log, ...habit.logs.filter(l => !isSameDay(l.date, dateObj))];
         const { currentStreak, longestStreak } = calculateStreak(allLogs, dateObj);
 
-        // STEP 6: Update habit streak (single query)
-        await prisma.habit.update({
-            where: { id },
-            data: { currentStreak, longestStreak, lastCompletedAt: dateObj }
-        });
+        // STEP 6: Update habit streak (with retry)
+        await withRetry(
+            () => prisma.habit.update({
+                where: { id },
+                data: { currentStreak, longestStreak, lastCompletedAt: dateObj }
+            }),
+            'updateStreak'
+        );
 
         console.log(`[Habits] Streak updated in ${Date.now() - startTime}ms`);
 
-        // STEP 7: Award XP directly (single query, no transaction)
+        // STEP 7: Award XP directly (with retry)
         let newTotalXp = 0;
         try {
-            const user = await prisma.user.update({
-                where: { id: userId },
-                data: { xp: { increment: xpBase } }
-            });
+            const user = await withRetry(
+                () => prisma.user.update({
+                    where: { id: userId },
+                    data: { xp: { increment: xpBase } }
+                }),
+                'awardXp'
+            );
             newTotalXp = user.xp;
             console.log(`[Habits] XP awarded in ${Date.now() - startTime}ms`);
         } catch (xpErr) {
             console.error('[Habits] XP award failed (non-fatal):', xpErr);
-            // Get current XP anyway
             const user = await prisma.user.findUnique({ where: { id: userId } });
             newTotalXp = user?.xp || 0;
         }
@@ -278,7 +292,7 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
             streak: { current: currentStreak, longest: longestStreak },
             xpEarned: xpBase,
             newTotalXp,
-            newBadges: [] // Skip badge evaluation for now
+            newBadges: []
         });
 
     } catch (e: unknown) {

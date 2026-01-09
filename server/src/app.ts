@@ -156,16 +156,21 @@ if (require.main === module) {
         console.log(`   API:    http://localhost:${PORT}/api/v1\n`);
     });
 
-    // Initialize database and gamification in background
+    // Initialize database connection and keep it warm
     (async () => {
-        // Check database connection
-        const dbConnected = await checkDatabaseConnection();
-        if (!dbConnected) {
-            console.error('❌ Could not connect to database. Check your DATABASE_URL');
-            console.error('   Server will continue running but may have limited functionality');
+        // Import warmup functions
+        const { warmupConnection, startKeepAlive } = await import('./utils/prisma');
+
+        // Warmup database connection (retries up to 5 times)
+        const dbReady = await warmupConnection();
+        if (dbReady) {
+            // Start keep-alive pings to prevent connection drops
+            startKeepAlive();
+        } else {
+            console.error('❌ Database connection failed. Server may have issues.');
         }
 
-        // Sync gamification data (badges, challenges)
+        // Sync gamification data (badges, challenges) - non-critical
         try {
             const { syncBadgeDefinitions, syncDefaultChallenges } = await import('./lib/gamificationService');
             await syncBadgeDefinitions();
