@@ -24,9 +24,13 @@ export function clearAllLockouts(): void {
 // In production, consider using Redis for distributed systems
 const failedAttempts = new Map<string, FailedAttempt>();
 
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_FAILED_ATTEMPTS = 20; // Increased for testing
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes (reduced for testing)
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // Clean up every hour
+
+// Clear all lockouts on server startup (helps after deploys)
+console.log('[Auth] Clearing all lockouts on server startup');
+failedAttempts.clear();
 
 // Cleanup old entries periodically
 setInterval(() => {
