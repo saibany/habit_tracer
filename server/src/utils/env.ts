@@ -5,9 +5,8 @@
 
 const requiredEnvVars = [
     'JWT_SECRET',
-    'DATABASE_URL',
-    'EMAIL_USER',
-    'EMAIL_PASS'
+    'DATABASE_URL'
+    // EMAIL_USER and EMAIL_PASS are optional - app will log warning if not set
 ] as const;
 
 const optionalEnvVars = {
