@@ -55,22 +55,11 @@ export const LoginPage = () => {
         }
     };
 
-    const [verificationLink, setVerificationLink] = useState('');
-
     const handleResendVerification = async () => {
         setIsResendLoading(true);
-        setVerificationLink('');
         try {
-            const { data } = await api.post('/auth/resend-verification', { email });
-
-            // Check for dev mode verification URL (show link, don't auto-navigate!)
-            if (data?.metadata?.verificationUrl) {
-                setVerificationLink(data.metadata.verificationUrl);
-                setSuccessMessage('Verification link generated! Click below to verify.');
-            } else {
-                setSuccessMessage('Verification email sent! Please check your inbox.');
-            }
-
+            await api.post('/auth/resend-verification', { email });
+            setSuccessMessage('Verification email sent! Please check your inbox.');
             setError('');
             setErrorCode('');
         } catch (err: any) {
@@ -93,24 +82,10 @@ export const LoginPage = () => {
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="p-4 bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800 rounded-xl"
+                            className="p-4 bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800 rounded-xl flex items-start gap-3"
                         >
-                            <div className="flex items-start gap-3">
-                                <CheckCircle className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
-                                <div className="space-y-2 flex-1">
-                                    <p className="text-sm text-teal-700 dark:text-teal-300">{successMessage}</p>
-                                    {verificationLink && (
-                                        <a
-                                            href={verificationLink}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="block w-full py-2 px-4 bg-teal-500 hover:bg-teal-600 text-white text-center rounded-lg text-sm font-medium transition-colors"
-                                        >
-                                            Click to Verify Email →
-                                        </a>
-                                    )}
-                                </div>
-                            </div>
+                            <CheckCircle className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
+                            <p className="text-sm text-teal-700 dark:text-teal-300">{successMessage}</p>
                         </motion.div>
                     )}
 

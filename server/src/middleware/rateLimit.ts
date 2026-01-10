@@ -35,7 +35,7 @@ export const apiLimiter: RateLimitRequestHandler = rateLimit({
  */
 export const authLimiter: RateLimitRequestHandler = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // TEMPORARILY DISABLED - was parseInt(getEnv('RATE_LIMIT_AUTH_MAX'), 10)
+    max: 10, // 10 attempts per 15 minutes (reasonable for production)
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many authentication attempts, please try again later.' },

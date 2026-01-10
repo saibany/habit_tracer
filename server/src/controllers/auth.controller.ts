@@ -66,9 +66,8 @@ export const register = async (req: Request, res: Response) => {
             }
         });
 
-        // Send verification email
-        const verificationUrl = await sendVerificationEmail(email, token);
-        const isDevelopment = true; // FORCE ENABLE link sharing even in prod until SendGrid is ready
+        // Send verification email via Resend
+        await sendVerificationEmail(email, token);
 
         // Audit log
         await createAuditLog({
@@ -80,9 +79,7 @@ export const register = async (req: Request, res: Response) => {
         res.status(201).json({
             success: true,
             message: 'Account created! Please check your email to verify your account.',
-            requiresVerification: true,
-            // Dev helper: return link directly
-            metadata: isDevelopment ? { verificationUrl } : undefined
+            requiresVerification: true
         });
     } catch (e: unknown) {
         console.error('[Auth] Register error:', e);
@@ -514,15 +511,12 @@ export const resendVerification = async (req: Request, res: Response) => {
             }
         });
 
-        // Send email
-        const verificationUrl = await sendVerificationEmail(normalizedEmail, token);
-        const isDevelopment = true; // FORCE ENABLE link sharing even in prod until SendGrid is ready
+        // Send email via Resend
+        await sendVerificationEmail(normalizedEmail, token);
 
         res.json({
             success: true,
-            message: 'A new verification email has been sent.',
-            // Dev helper: return link directly
-            metadata: isDevelopment ? { verificationUrl } : undefined
+            message: 'A new verification email has been sent.'
         });
     } catch (e) {
         console.error('[Auth] Resend verification error:', e);

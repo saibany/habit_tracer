@@ -1,11 +1,17 @@
 /**
- * Email Utility
- * Phase 1: Console-based (no real email sending)
- * Phase 2: Add Nodemailer / SendGrid / Resend
+ * Email Service using Resend
+ * Production-grade email delivery for verification and password reset
  */
 
 import crypto from 'crypto';
+import { Resend } from 'resend';
 import { getEnv } from '../utils/env';
+
+// Initialize Resend with API key
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Email configuration
+const FROM_EMAIL = process.env.EMAIL_FROM || 'Habit Tracer <noreply@resend.dev>';
 
 /**
  * Generate a random token and its hash
@@ -34,40 +40,111 @@ function getBaseUrl(): string {
 }
 
 /**
- * Send verification email
- * Phase 1: Just logs to console
+ * Send verification email using Resend
  */
-export async function sendVerificationEmail(email: string, token: string): Promise<string> {
+export async function sendVerificationEmail(email: string, token: string): Promise<void> {
     const baseUrl = getBaseUrl();
     const verifyUrl = `${baseUrl}/verify-email?token=${token}`;
 
-    console.log('\n========================================');
-    console.log('📧 VERIFICATION EMAIL (Console Mode)');
-    console.log('========================================');
-    console.log(`To: ${email}`);
-    console.log(`Subject: Verify your email address`);
-    console.log(`\nClick here to verify your email:`);
-    console.log(`${verifyUrl}`);
-    console.log('========================================\n');
+    const { data, error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: email,
+        subject: 'Verify your email address - Habit Tracer',
+        html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Verify Your Email</title>
+            </head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background-color: #f8fafc; margin: 0; padding: 40px 20px;">
+                <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden;">
+                    <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 32px; text-align: center;">
+                        <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Habit Tracer</h1>
+                    </div>
+                    <div style="padding: 32px;">
+                        <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 20px;">Verify your email address</h2>
+                        <p style="color: #64748b; line-height: 1.6; margin: 0 0 24px 0;">
+                            Thanks for signing up! Please click the button below to verify your email address and activate your account.
+                        </p>
+                        <a href="${verifyUrl}" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                            Verify Email Address
+                        </a>
+                        <p style="color: #94a3b8; font-size: 14px; margin: 24px 0 0 0; line-height: 1.6;">
+                            This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.
+                        </p>
+                        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+                        <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                            If the button doesn't work, copy and paste this link into your browser:<br>
+                            <a href="${verifyUrl}" style="color: #6366f1; word-break: break-all;">${verifyUrl}</a>
+                        </p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `,
+    });
 
-    return verifyUrl;
+    if (error) {
+        console.error('[Email] Failed to send verification email:', error);
+        throw new Error(`Failed to send verification email: ${error.message}`);
+    }
+
+    console.log('[Email] Verification email sent successfully:', data?.id);
 }
 
 /**
- * Send password reset email
- * Phase 1: Just logs to console
+ * Send password reset email using Resend
  */
 export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
     const baseUrl = getBaseUrl();
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
-    console.log('\n========================================');
-    console.log('📧 PASSWORD RESET EMAIL (Console Mode)');
-    console.log('========================================');
-    console.log(`To: ${email}`);
-    console.log(`Subject: Reset your password`);
-    console.log(`\nClick here to reset your password:`);
-    console.log(`${resetUrl}`);
-    console.log('(This link expires in 1 hour)');
-    console.log('========================================\n');
+    const { data, error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: email,
+        subject: 'Reset your password - Habit Tracer',
+        html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Reset Your Password</title>
+            </head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background-color: #f8fafc; margin: 0; padding: 40px 20px;">
+                <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden;">
+                    <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 32px; text-align: center;">
+                        <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Habit Tracer</h1>
+                    </div>
+                    <div style="padding: 32px;">
+                        <h2 style="color: #1e293b; margin: 0 0 16px 0; font-size: 20px;">Reset your password</h2>
+                        <p style="color: #64748b; line-height: 1.6; margin: 0 0 24px 0;">
+                            We received a request to reset your password. Click the button below to choose a new password.
+                        </p>
+                        <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                            Reset Password
+                        </a>
+                        <p style="color: #94a3b8; font-size: 14px; margin: 24px 0 0 0; line-height: 1.6;">
+                            This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
+                        </p>
+                        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+                        <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                            If the button doesn't work, copy and paste this link into your browser:<br>
+                            <a href="${resetUrl}" style="color: #6366f1; word-break: break-all;">${resetUrl}</a>
+                        </p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `,
+    });
+
+    if (error) {
+        console.error('[Email] Failed to send password reset email:', error);
+        throw new Error(`Failed to send password reset email: ${error.message}`);
+    }
+
+    console.log('[Email] Password reset email sent successfully:', data?.id);
 }
