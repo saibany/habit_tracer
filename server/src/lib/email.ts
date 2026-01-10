@@ -1,17 +1,34 @@
 /**
- * Email Service using Resend
+ * Email Service using Nodemailer with Gmail SMTP
  * Production-grade email delivery for verification and password reset
  */
 
 import crypto from 'crypto';
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { getEnv } from '../utils/env';
 
-// Initialize Resend with API key
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Email configuration from environment
+const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
+const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '587', 10);
+const EMAIL_USER = process.env.EMAIL_USER || '';
+const EMAIL_PASS = process.env.EMAIL_PASS || '';
+const EMAIL_FROM = process.env.EMAIL_FROM || `Habit Tracer <${EMAIL_USER}>`;
 
-// Email configuration
-const FROM_EMAIL = process.env.EMAIL_FROM || 'Habit Tracer <noreply@resend.dev>';
+// Create transporter
+const transporter = nodemailer.createTransport({
+    host: EMAIL_HOST,
+    port: EMAIL_PORT,
+    secure: EMAIL_PORT === 465, // true for 465, false for other ports
+    auth: {
+        user: EMAIL_USER,
+        pass: EMAIL_PASS,
+    },
+});
+
+// Verify connection on startup (optional, logs to console)
+transporter.verify()
+    .then(() => console.log('[Email] SMTP connection verified successfully'))
+    .catch((err) => console.error('[Email] SMTP connection failed:', err.message));
 
 /**
  * Generate a random token and its hash
@@ -40,14 +57,14 @@ function getBaseUrl(): string {
 }
 
 /**
- * Send verification email using Resend
+ * Send verification email using Gmail SMTP
  */
 export async function sendVerificationEmail(email: string, token: string): Promise<void> {
     const baseUrl = getBaseUrl();
     const verifyUrl = `${baseUrl}/verify-email?token=${token}`;
 
-    const { data, error } = await resend.emails.send({
-        from: FROM_EMAIL,
+    const mailOptions = {
+        from: EMAIL_FROM,
         to: email,
         subject: 'Verify your email address - Habit Tracer',
         html: `
@@ -84,25 +101,26 @@ export async function sendVerificationEmail(email: string, token: string): Promi
             </body>
             </html>
         `,
-    });
+    };
 
-    if (error) {
+    try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log('[Email] Verification email sent successfully:', info.messageId);
+    } catch (error) {
         console.error('[Email] Failed to send verification email:', error);
-        throw new Error(`Failed to send verification email: ${error.message}`);
+        throw new Error(`Failed to send verification email: ${(error as Error).message}`);
     }
-
-    console.log('[Email] Verification email sent successfully:', data?.id);
 }
 
 /**
- * Send password reset email using Resend
+ * Send password reset email using Gmail SMTP
  */
 export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
     const baseUrl = getBaseUrl();
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
-    const { data, error } = await resend.emails.send({
-        from: FROM_EMAIL,
+    const mailOptions = {
+        from: EMAIL_FROM,
         to: email,
         subject: 'Reset your password - Habit Tracer',
         html: `
@@ -139,12 +157,13 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
             </body>
             </html>
         `,
-    });
+    };
 
-    if (error) {
+    try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log('[Email] Password reset email sent successfully:', info.messageId);
+    } catch (error) {
         console.error('[Email] Failed to send password reset email:', error);
-        throw new Error(`Failed to send password reset email: ${error.message}`);
+        throw new Error(`Failed to send password reset email: ${(error as Error).message}`);
     }
-
-    console.log('[Email] Password reset email sent successfully:', data?.id);
 }

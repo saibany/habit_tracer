@@ -6,7 +6,8 @@
 const requiredEnvVars = [
     'JWT_SECRET',
     'DATABASE_URL',
-    'RESEND_API_KEY'
+    'EMAIL_USER',
+    'EMAIL_PASS'
 ] as const;
 
 const optionalEnvVars = {
