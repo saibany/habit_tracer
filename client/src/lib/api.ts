@@ -17,8 +17,14 @@ api.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
 
-        // Handle 401 errors (unauthorized) and ensure we haven't already tried to refresh
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        // Skip refresh retry for auth endpoints to prevent infinite loops
+        const isAuthEndpoint = originalRequest.url?.includes('/auth/');
+
+        // Handle 401 errors (unauthorized) - only retry if:
+        // 1. It's a 401 error
+        // 2. We haven't already tried to refresh
+        // 3. It's NOT an auth endpoint (to prevent infinite loops)
+        if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
             originalRequest._retry = true;
 
             try {
@@ -28,7 +34,7 @@ api.interceptors.response.use(
                 // Retry the original request
                 return api(originalRequest);
             } catch (refreshError) {
-                // If refresh fails, redirect to login or let AuthContext handle the logout state
+                // If refresh fails, let the error propagate
                 return Promise.reject(refreshError);
             }
         }
