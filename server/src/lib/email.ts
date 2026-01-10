@@ -1,34 +1,23 @@
 /**
- * Email Service using Nodemailer with Gmail SMTP
+ * Email Service using SendGrid HTTP API
  * Production-grade email delivery for verification and password reset
+ * Uses HTTP API which works reliably on Railway (unlike SMTP)
  */
 
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 import { getEnv } from '../utils/env';
 
-// Email configuration from environment
-const EMAIL_HOST = process.env.EMAIL_HOST || 'smtp.gmail.com';
-const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '587', 10);
-const EMAIL_USER = process.env.EMAIL_USER || '';
-const EMAIL_PASS = process.env.EMAIL_PASS || '';
-const EMAIL_FROM = process.env.EMAIL_FROM || `Habit Tracer <${EMAIL_USER}>`;
+// Initialize SendGrid with API key
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
+const EMAIL_FROM = process.env.EMAIL_FROM || 'Habit Tracer <noreply@habittracer.app>';
 
-// Create transporter
-const transporter = nodemailer.createTransport({
-    host: EMAIL_HOST,
-    port: EMAIL_PORT,
-    secure: EMAIL_PORT === 465, // true for 465, false for other ports
-    auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASS,
-    },
-});
-
-// Verify connection on startup (optional, logs to console)
-transporter.verify()
-    .then(() => console.log('[Email] SMTP connection verified successfully'))
-    .catch((err) => console.error('[Email] SMTP connection failed:', err.message));
+if (SENDGRID_API_KEY) {
+    sgMail.setApiKey(SENDGRID_API_KEY);
+    console.log('[Email] SendGrid initialized successfully');
+} else {
+    console.warn('[Email] SENDGRID_API_KEY not set - email sending disabled');
+}
 
 /**
  * Generate a random token and its hash
@@ -57,15 +46,20 @@ function getBaseUrl(): string {
 }
 
 /**
- * Send verification email using Gmail SMTP
+ * Send verification email using SendGrid
  */
 export async function sendVerificationEmail(email: string, token: string): Promise<void> {
+    if (!SENDGRID_API_KEY) {
+        console.warn('[Email] SendGrid not configured, skipping email send');
+        throw new Error('Email service not configured');
+    }
+
     const baseUrl = getBaseUrl();
     const verifyUrl = `${baseUrl}/verify-email?token=${token}`;
 
-    const mailOptions = {
-        from: EMAIL_FROM,
+    const msg = {
         to: email,
+        from: EMAIL_FROM,
         subject: 'Verify your email address - Habit Tracer',
         html: `
             <!DOCTYPE html>
@@ -104,24 +98,29 @@ export async function sendVerificationEmail(email: string, token: string): Promi
     };
 
     try {
-        const info = await transporter.sendMail(mailOptions);
-        console.log('[Email] Verification email sent successfully:', info.messageId);
-    } catch (error) {
-        console.error('[Email] Failed to send verification email:', error);
-        throw new Error(`Failed to send verification email: ${(error as Error).message}`);
+        await sgMail.send(msg);
+        console.log('[Email] Verification email sent successfully to:', email);
+    } catch (error: any) {
+        console.error('[Email] Failed to send verification email:', error?.response?.body || error);
+        throw new Error(`Failed to send verification email: ${error?.message || 'Unknown error'}`);
     }
 }
 
 /**
- * Send password reset email using Gmail SMTP
+ * Send password reset email using SendGrid
  */
 export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
+    if (!SENDGRID_API_KEY) {
+        console.warn('[Email] SendGrid not configured, skipping email send');
+        throw new Error('Email service not configured');
+    }
+
     const baseUrl = getBaseUrl();
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
-    const mailOptions = {
-        from: EMAIL_FROM,
+    const msg = {
         to: email,
+        from: EMAIL_FROM,
         subject: 'Reset your password - Habit Tracer',
         html: `
             <!DOCTYPE html>
@@ -160,10 +159,10 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
     };
 
     try {
-        const info = await transporter.sendMail(mailOptions);
-        console.log('[Email] Password reset email sent successfully:', info.messageId);
-    } catch (error) {
-        console.error('[Email] Failed to send password reset email:', error);
-        throw new Error(`Failed to send password reset email: ${(error as Error).message}`);
+        await sgMail.send(msg);
+        console.log('[Email] Password reset email sent successfully to:', email);
+    } catch (error: any) {
+        console.error('[Email] Failed to send password reset email:', error?.response?.body || error);
+        throw new Error(`Failed to send password reset email: ${error?.message || 'Unknown error'}`);
     }
 }
