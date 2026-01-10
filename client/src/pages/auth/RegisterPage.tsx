@@ -44,10 +44,13 @@ export const RegisterPage = () => {
             const { data } = await api.post('/auth/register', { email, password, name });
             setSuccess(data); // Store full response to access metadata
 
-            // Redirect to login after 3 seconds
-            setTimeout(() => {
-                navigate('/login', { state: { message: 'Account created! Please check your email to verify your account.' } });
-            }, 3000);
+            // Only auto-redirect if there's NO verification link (production mode)
+            // In dev mode with verification link, user must manually verify first
+            if (!data?.metadata?.verificationUrl) {
+                setTimeout(() => {
+                    navigate('/login', { state: { message: 'Account created! Please check your email to verify your account.' } });
+                }, 5000);
+            }
         } catch (err: any) {
             const response = err.response?.data;
             const errorMessage = response?.message || response?.error || 'Registration failed. Please try again.';
@@ -79,7 +82,9 @@ export const RegisterPage = () => {
                         </div>
                     </motion.div>
 
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Check your email!</h2>
+                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+                        {verificationUrl ? 'Verify Your Email' : 'Check your email!'}
+                    </h2>
 
                     {verificationUrl ? (
                         <div className="my-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-xl text-left">
