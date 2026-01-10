@@ -79,9 +79,9 @@ export function startKeepAlive(): void {
         } catch (error) {
             console.warn('[Prisma] Keep-alive ping failed, connection may be dropped');
         }
-    }, 30000); // Every 30 seconds
+    }, 120000); // Every 2 minutes (reduced from 30s to decrease db load)
 
-    console.log('[Prisma] Keep-alive started (30s interval)');
+    console.log('[Prisma] Keep-alive started (2min interval)');
 }
 
 export function stopKeepAlive(): void {
