@@ -66,8 +66,17 @@ export const register = async (req: Request, res: Response) => {
             }
         });
 
-        // Send verification email via Resend
-        await sendVerificationEmail(email, token);
+        // Try to send verification email (non-blocking - registration succeeds even if email fails)
+        let emailSent = false;
+        try {
+            await sendVerificationEmail(email, token);
+            emailSent = true;
+            console.log('[Auth] Verification email sent to:', email);
+        } catch (emailError) {
+            console.error('[Auth] Failed to send verification email:', emailError);
+            console.error('[Auth] User registered but email not sent. Token:', token);
+            // Don't fail registration - user can request resend
+        }
 
         // Audit log
         await createAuditLog({
@@ -78,8 +87,11 @@ export const register = async (req: Request, res: Response) => {
 
         res.status(201).json({
             success: true,
-            message: 'Account created! Please check your email to verify your account.',
-            requiresVerification: true
+            message: emailSent
+                ? 'Account created! Please check your email to verify your account.'
+                : 'Account created! Email delivery failed - please use "Resend verification" on the login page.',
+            requiresVerification: true,
+            emailSent
         });
     } catch (e: unknown) {
         console.error('[Auth] Register error:', e);
