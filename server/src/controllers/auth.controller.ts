@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import prisma from '../utils/prisma';
+import prisma, { withRetry } from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { createAuditLog } from '../lib/auditLog';
 import { getRequiredEnv, getEnv } from '../utils/env';
@@ -37,8 +37,13 @@ export const register = async (req: Request, res: Response) => {
     try {
         const { email, password, name } = registerSchema.parse(req.body);
 
-        // Check existing user
-        const existing = await prisma.user.findUnique({ where: { email } });
+        // Check existing user with retry for connection resilience
+        const existing = await withRetry(
+            () => prisma.user.findUnique({ where: { email } }),
+            'check existing user',
+            3,
+            1000
+        );
         if (existing) {
             return res.status(409).json({ error: 'Email already registered' });
         }
@@ -51,20 +56,25 @@ export const register = async (req: Request, res: Response) => {
         const { token, hash } = generateToken();
         const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-        // Create user with verification token
-        const user = await prisma.user.create({
-            data: {
-                email,
-                password: hashedPassword,
-                name,
-                emailVerified: false,
-                emailVerificationToken: hash,
-                emailTokenExpiry: tokenExpiry,
-                settings: {
-                    create: {}
+        // Create user with verification token (with retry)
+        const user = await withRetry(
+            () => prisma.user.create({
+                data: {
+                    email,
+                    password: hashedPassword,
+                    name,
+                    emailVerified: false,
+                    emailVerificationToken: hash,
+                    emailTokenExpiry: tokenExpiry,
+                    settings: {
+                        create: {}
+                    }
                 }
-            }
-        });
+            }),
+            'create user',
+            3,
+            1000
+        );
 
         // Try to send verification email (non-blocking - registration succeeds even if email fails)
         let emailSent = false;
