@@ -149,7 +149,13 @@ export const login = async (req: Request, res: Response) => {
             });
         }
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        // Find user with retry for connection resilience
+        const user = await withRetry(
+            () => prisma.user.findUnique({ where: { email } }),
+            'find user for login',
+            3,
+            1000
+        );
         if (!user) {
             // Record failed attempt even if user doesn't exist (prevents user enumeration)
             recordFailedAttempt(email, ipAddress);
