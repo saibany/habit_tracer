@@ -186,7 +186,7 @@ export const deleteHabit = async (req: AuthRequest, res: Response) => {
 };
 
 // ============================================
-// LOG HABIT COMPLETION - WITH RETRY LOGIC
+// LOG HABIT COMPLETION - FIXED VERSION
 // ============================================
 export const logHabit = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -196,49 +196,53 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
     const sanitizedNotes = notes ? sanitizeInput(notes) : undefined;
     if (!date) return res.status(400).json({ error: "Date is required" });
 
-    const dateObj = startOfDay(new Date(date));
+    // CRITICAL: Normalize to UTC midnight for consistent comparison
+    const inputDate = new Date(date);
+    const dateObj = new Date(Date.UTC(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate()));
+    const dateKey = dateObj.toISOString().split('T')[0]; // YYYY-MM-DD for comparison
     const userId = req.user.userId;
 
-    console.log(`[Habits] logHabit START: habitId=${id}, userId=${userId}, date=${date}`);
-    const startTime = Date.now();
+    console.log(`[Habits] logHabit: habitId=${id}, date=${dateKey}`);
 
     try {
-        // Import retry helper
         const { withRetry } = await import('../utils/prisma');
 
-        // STEP 1: Get habit (with retry)
+        // STEP 1: Get habit with today's logs
         const habit = await withRetry(
             () => prisma.habit.findUnique({
                 where: { id, userId },
-                include: { logs: { orderBy: { date: 'desc' }, take: 30 } }
+                include: { logs: { orderBy: { date: 'desc' }, take: 60 } }
             }),
             'findHabit'
         );
 
         if (!habit) {
-            console.log(`[Habits] Habit not found: ${id}`);
             return res.status(404).json({ error: "Habit not found" });
         }
 
-        console.log(`[Habits] Habit found in ${Date.now() - startTime}ms`);
+        // STEP 2: Check if already logged today (use UTC date string comparison)
+        const existingLog = habit.logs.find(l => {
+            const logDateKey = new Date(l.date).toISOString().split('T')[0];
+            return logDateKey === dateKey;
+        });
 
-        // STEP 2: Check if already logged (idempotency)
-        const existingLog = habit.logs.find(l => isSameDay(l.date, dateObj));
         if (existingLog?.completed) {
-            console.log(`[Habits] Already logged today, returning cached`);
+            // Already logged - return current state (idempotent)
+            const user = await prisma.user.findUnique({ where: { id: userId } });
             return res.json({
                 log: existingLog,
                 streak: { current: habit.currentStreak, longest: habit.longestStreak },
                 xpEarned: 0,
-                newTotalXp: 0,
-                newBadges: []
+                newTotalXp: Math.max(0, user?.xp || 0),
+                newLevel: user?.level || 1,
+                isAlreadyLogged: true
             });
         }
 
-        // STEP 3: Calculate XP
+        // STEP 3: Calculate XP (capped at 50)
         const xpBase = Math.min(10 + habit.currentStreak * 2, 50);
 
-        // STEP 4: Upsert log (with retry)
+        // STEP 4: Upsert log atomically
         const log = await withRetry(
             () => prisma.habitLog.upsert({
                 where: { habitId_date: { habitId: id, date: dateObj } },
@@ -248,13 +252,14 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
             'upsertLog'
         );
 
-        console.log(`[Habits] Log upserted in ${Date.now() - startTime}ms`);
-
-        // STEP 5: Calculate streak locally (no additional queries)
-        const allLogs = [log, ...habit.logs.filter(l => !isSameDay(l.date, dateObj))];
+        // STEP 5: Calculate streak with proper UTC comparison
+        const allLogs = [log, ...habit.logs.filter(l => {
+            const logDateKey = new Date(l.date).toISOString().split('T')[0];
+            return logDateKey !== dateKey;
+        })];
         const { currentStreak, longestStreak } = calculateStreak(allLogs, dateObj);
 
-        // STEP 6: Update habit streak (with retry)
+        // STEP 6: Update habit streak
         await withRetry(
             () => prisma.habit.update({
                 where: { id },
@@ -263,47 +268,46 @@ export const logHabit = async (req: AuthRequest, res: Response) => {
             'updateStreak'
         );
 
-        console.log(`[Habits] Streak updated in ${Date.now() - startTime}ms`);
+        // STEP 7: Award XP and get updated user state
+        const user = await withRetry(
+            () => prisma.user.update({
+                where: { id: userId },
+                data: { xp: { increment: xpBase } }
+            }),
+            'awardXp'
+        );
 
-        // STEP 7: Award XP directly (with retry)
-        let newTotalXp = 0;
-        try {
-            const user = await withRetry(
-                () => prisma.user.update({
-                    where: { id: userId },
-                    data: { xp: { increment: xpBase } }
-                }),
-                'awardXp'
-            );
-            newTotalXp = user.xp;
-            console.log(`[Habits] XP awarded in ${Date.now() - startTime}ms`);
-        } catch (xpErr) {
-            console.error('[Habits] XP award failed (non-fatal):', xpErr);
-            const user = await prisma.user.findUnique({ where: { id: userId } });
-            newTotalXp = user?.xp || 0;
+        // Calculate level from XP
+        const newLevel = calculateLevelFromXp(user.xp);
+
+        // Update level if changed
+        if (newLevel !== user.level) {
+            await prisma.user.update({
+                where: { id: userId },
+                data: { level: newLevel }
+            });
         }
 
-        const totalTime = Date.now() - startTime;
-        console.log(`[Habits] logHabit COMPLETE in ${totalTime}ms`);
+        console.log(`[Habits] logHabit COMPLETE: xp=${user.xp}, level=${newLevel}`);
 
-        // Return response immediately
+        // Return COMPLETE state for frontend sync
         res.json({
             log,
             streak: { current: currentStreak, longest: longestStreak },
             xpEarned: xpBase,
-            newTotalXp,
-            newBadges: []
+            newTotalXp: Math.max(0, user.xp),
+            newLevel,
+            isAlreadyLogged: false
         });
 
     } catch (e: unknown) {
-        const totalTime = Date.now() - startTime;
-        console.error(`[Habits] logHabit FAILED after ${totalTime}ms:`, e);
+        console.error(`[Habits] logHabit FAILED:`, e);
         res.status(500).json({ error: "Failed to log habit. Please try again." });
     }
 };
 
 // ============================================
-// UNDO HABIT LOG - WITH XP REVERSION
+// UNDO HABIT LOG - FIXED VERSION
 // ============================================
 export const undoLog = async (req: AuthRequest, res: Response) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -312,15 +316,18 @@ export const undoLog = async (req: AuthRequest, res: Response) => {
 
     if (!date) return res.status(400).json({ error: "Date is required" });
 
-    const dateObj = startOfDay(new Date(date));
+    // CRITICAL: Normalize to UTC midnight (same as logHabit)
+    const inputDate = new Date(date);
+    const dateObj = new Date(Date.UTC(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate()));
+    const dateKey = dateObj.toISOString().split('T')[0];
     const userId = req.user.userId;
 
-    console.log(`[Habits] undoLog START: habitId=${id}, userId=${userId}, date=${date}`);
+    console.log(`[Habits] undoLog: habitId=${id}, date=${dateKey}`);
 
     try {
         const { withRetry } = await import('../utils/prisma');
 
-        // 1. Find the log
+        // 1. Find the log (use proper date)
         const log = await withRetry(
             () => prisma.habitLog.findUnique({
                 where: { habitId_date: { habitId: id, date: dateObj } }
@@ -329,32 +336,42 @@ export const undoLog = async (req: AuthRequest, res: Response) => {
         );
 
         if (!log) {
-            return res.status(404).json({ error: "Log not found" });
+            // Log not found - might already be deleted, return success
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            const habit = await prisma.habit.findUnique({ where: { id } });
+            return res.json({
+                message: 'Log already removed',
+                xpRemoved: 0,
+                newTotalXp: Math.max(0, user?.xp || 0),
+                newLevel: user?.level || calculateLevelFromXp(user?.xp || 0),
+                streak: { current: habit?.currentStreak || 0, longest: habit?.longestStreak || 0 }
+            });
         }
 
         // 2. Get current user XP
         const currentUser = await prisma.user.findUnique({ where: { id: userId } });
-        const currentXp = currentUser?.xp || 0;
+        const currentXp = Math.max(0, currentUser?.xp || 0);
 
-        // 3. Calculate new XP (never go below 0)
-        const xpToRemove = log.xpEarned || 0;
+        // 3. Calculate new XP (NEVER go below 0)
+        const xpToRemove = Math.max(0, log.xpEarned || 0);
         const newXp = Math.max(0, currentXp - xpToRemove);
 
-        // 4. Update user XP (set to calculated value, not decrement)
-        await withRetry(
-            () => prisma.user.update({
-                where: { id: userId },
-                data: { xp: newXp }
-            }),
-            'updateXp'
-        );
-
-        // 5. Delete the log
+        // 4. Delete the log FIRST (atomic)
         await withRetry(
             () => prisma.habitLog.delete({
                 where: { habitId_date: { habitId: id, date: dateObj } }
             }),
             'deleteLog'
+        );
+
+        // 5. Update user XP and level
+        const newLevel = calculateLevelFromXp(newXp);
+        await withRetry(
+            () => prisma.user.update({
+                where: { id: userId },
+                data: { xp: newXp, level: newLevel }
+            }),
+            'updateXp'
         );
 
         // 6. Recalculate streak
@@ -377,20 +394,18 @@ export const undoLog = async (req: AuthRequest, res: Response) => {
             });
         }
 
-        console.log(`[Habits] undoLog COMPLETE: xpRemoved=${xpToRemove}, newTotalXp=${newXp}`);
+        console.log(`[Habits] undoLog COMPLETE: xp=${newXp}, level=${newLevel}`);
 
-        // Return full data for frontend sync
+        // Return COMPLETE state for frontend sync
         res.json({
             message: 'Log undone',
             xpRemoved: xpToRemove,
             newTotalXp: newXp,
+            newLevel,
             streak: { current: currentStreak, longest: longestStreak }
         });
     } catch (e: unknown) {
-        console.error('[Habits] Error undoing log:', e);
-        if (e instanceof Error && e.message === "Log not found") {
-            return res.status(404).json({ error: "Log not found" });
-        }
+        console.error('[Habits] undoLog FAILED:', e);
         res.status(500).json({ error: "Failed to undo log" });
     }
 };

@@ -35,7 +35,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [isLoading, setIsLoading] = useState(true);
 
     const updateUser = (updates: Partial<User>) => {
-        setUser(prev => prev ? { ...prev, ...updates } : null);
+        setUser(prev => {
+            if (!prev) return null;
+            return {
+                ...prev,
+                ...updates,
+                // CRITICAL: XP must never be negative
+                xp: Math.max(0, updates.xp ?? prev.xp)
+            };
+        });
     };
 
     const refreshUser = async () => {

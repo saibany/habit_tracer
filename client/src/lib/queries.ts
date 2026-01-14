@@ -194,6 +194,12 @@ export const useDeleteHabit = () => {
 
 import { useAuth } from '../context/AuthContext';
 
+// Helper: normalize date to YYYY-MM-DD for consistent comparison
+const toDateKey = (d: string | Date): string => {
+    const date = new Date(d);
+    return date.toISOString().split('T')[0];
+};
+
 export const useLogHabit = () => {
     const queryClient = useQueryClient();
     const { updateUser } = useAuth();
@@ -205,36 +211,38 @@ export const useLogHabit = () => {
                 log: HabitLog;
                 streak: { current: number; longest: number };
                 xpEarned: number;
-                newLevel?: number;
-                newBadges?: Badge[];
-                levelUp?: any;
+                newTotalXp: number;
+                newLevel: number;
+                isAlreadyLogged?: boolean;
             };
         },
         onMutate: async ({ id, date, value }) => {
+            // Cancel pending queries immediately
             await queryClient.cancelQueries({ queryKey: ['habits'] });
-            await queryClient.cancelQueries({ queryKey: ['habit', id] });
 
             const previousHabits = queryClient.getQueryData<Habit[]>(['habits', 'active']);
-            const previousHabit = queryClient.getQueryData<Habit>(['habit', id]);
+            const dateKey = toDateKey(date);
 
-            // Optimistic Update for List
+            // Optimistic update - add log and increment streak
             if (previousHabits) {
                 queryClient.setQueryData<Habit[]>(['habits', 'active'], (old) => {
                     return old?.map(h => {
                         if (h.id === id) {
-                            // Optimistically add log and increment streak
-                            const newLog = {
+                            // Check if already has log for this date
+                            const hasLog = h.logs.some(l => toDateKey(l.date) === dateKey);
+                            if (hasLog) return h; // Already logged, no change
+
+                            const newLog: HabitLog = {
                                 id: 'temp-' + Date.now(),
                                 date,
                                 value: value || 1,
                                 completed: true,
-                                xpEarned: 0 // placeholder
+                                xpEarned: 10
                             };
                             return {
                                 ...h,
                                 logs: [newLog, ...h.logs],
-                                currentStreak: h.currentStreak + 1,
-                                lastCompletedAt: date
+                                currentStreak: h.currentStreak + 1
                             };
                         }
                         return h;
@@ -242,55 +250,44 @@ export const useLogHabit = () => {
                 });
             }
 
-            return { previousHabits, previousHabit };
+            return { previousHabits };
         },
-        onError: (_err, _newHabit, context) => {
+        onError: (_err, _vars, context) => {
+            // Rollback on error
             if (context?.previousHabits) {
                 queryClient.setQueryData(['habits', 'active'], context.previousHabits);
             }
-            if (context?.previousHabit) {
-                queryClient.setQueryData(['habit', context.previousHabit.id], context.previousHabit);
-            }
         },
         onSuccess: (data, variables) => {
-            // Update specific habit in list with server data
+            const dateKey = toDateKey(variables.date);
+
+            // Update habit with REAL server data (replace optimistic)
             queryClient.setQueryData<Habit[]>(['habits', 'active'], (old) => {
                 return old?.map(h => {
                     if (h.id === variables.id) {
+                        // Filter out temp logs and any existing log for this date
+                        const filteredLogs = h.logs.filter(l =>
+                            !l.id.startsWith('temp-') && toDateKey(l.date) !== dateKey
+                        );
                         return {
                             ...h,
                             currentStreak: data.streak.current,
                             longestStreak: data.streak.longest,
-                            logs: [data.log, ...h.logs.filter(l => !l.id.startsWith('temp-'))]
+                            logs: [data.log, ...filteredLogs]
                         };
                     }
                     return h;
                 });
             });
 
-            // Handle XP / Badges / Level Up - INSTANT UI UPDATE
-            if (data.xpEarned > 0 || data.newLevel || (data.newBadges && data.newBadges.length > 0)) {
+            // ALWAYS update XP and level from server response (instant)
+            updateUser({
+                xp: data.newTotalXp,
+                level: data.newLevel
+            });
 
-                const finalLevel = data.newLevel ?? data.levelUp?.newLevel;
-                const finalXp = (data as any).newTotalXp;
-
-                if (finalXp !== undefined) {
-                    updateUser({ xp: finalXp, ...(finalLevel ? { level: finalLevel } : {}) });
-                } else {
-                    queryClient.invalidateQueries({ queryKey: ['auth', 'user'] });
-                }
-
-                if (data.newBadges && data.newBadges.length > 0) {
-                    queryClient.invalidateQueries({ queryKey: ['badges'] });
-                }
-            }
-
-            // Invalidate analytics (heatmap, summary) since completion affects them
-            // Use a small delay to avoid race condition with the main cache update
-            setTimeout(() => {
-                queryClient.invalidateQueries({ queryKey: ['analytics'] });
-                queryClient.invalidateQueries({ queryKey: ['heatmap'] });
-            }, 100);
+            // Invalidate analytics immediately (no delay)
+            queryClient.invalidateQueries({ queryKey: ['analytics'] });
         }
     });
 };
@@ -306,12 +303,14 @@ export const useUndoHabitLog = () => {
                 message: string;
                 xpRemoved: number;
                 newTotalXp: number;
+                newLevel: number;
                 streak: { current: number; longest: number };
             };
         },
         onMutate: async ({ id, date }) => {
             await queryClient.cancelQueries({ queryKey: ['habits'] });
             const previousHabits = queryClient.getQueryData<Habit[]>(['habits', 'active']);
+            const dateKey = toDateKey(date);
 
             // Optimistic update - remove log and decrease streak
             if (previousHabits) {
@@ -320,7 +319,7 @@ export const useUndoHabitLog = () => {
                         if (h.id === id) {
                             return {
                                 ...h,
-                                logs: h.logs.filter(l => l.date !== date),
+                                logs: h.logs.filter(l => toDateKey(l.date) !== dateKey),
                                 currentStreak: Math.max(0, h.currentStreak - 1)
                             };
                         }
@@ -337,17 +336,15 @@ export const useUndoHabitLog = () => {
             }
         },
         onSuccess: (data, variables) => {
-            // Update XP immediately in AuthContext
-            if (data.newTotalXp !== undefined) {
-                updateUser({ xp: data.newTotalXp });
-            }
+            const dateKey = toDateKey(variables.date);
 
-            // Update habit with server streak values
+            // Update habit with server data (remove log for this date)
             queryClient.setQueryData<Habit[]>(['habits', 'active'], (old) => {
                 return old?.map(h => {
                     if (h.id === variables.id) {
                         return {
                             ...h,
+                            logs: h.logs.filter(l => toDateKey(l.date) !== dateKey),
                             currentStreak: data.streak.current,
                             longestStreak: data.streak.longest
                         };
@@ -356,9 +353,14 @@ export const useUndoHabitLog = () => {
                 });
             });
 
-            // Invalidate analytics
+            // ALWAYS update XP and level from server response (instant)
+            updateUser({
+                xp: data.newTotalXp,
+                level: data.newLevel
+            });
+
+            // Invalidate analytics immediately
             queryClient.invalidateQueries({ queryKey: ['analytics'] });
-            queryClient.invalidateQueries({ queryKey: ['heatmap'] });
         }
     });
 };
